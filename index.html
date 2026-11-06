@@ -14,7 +14,7 @@
       <img class="brand-logo" src="pursuit-level-logo.png" alt="Pursuit Level — six-star sunset logo" width="76" height="76">
       <div class="brand-title"><strong>CLIP STUDIO</strong><span>PURSUIT LEVEL / FOOTAGE WORKSPACE</span></div>
     </div>
-    <span class="version">v0.3 / LOCAL WORKSPACE</span>
+    <span class="version">v0.4 / LOCAL WORKSPACE</span>
   </header>
   <main>
     <section class="panel editor-panel" aria-labelledby="source-heading">
@@ -27,13 +27,19 @@
         <input id="file" type="file" accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm" aria-label="Choose a video file">
       </div>
       <p id="filename" class="file-meta">No video loaded</p>
-      <video id="video" controls playsinline preload="metadata" aria-label="Source video preview"></video>
+      <div class="source-preview"><div class="preview-label">SOURCE PREVIEW</div><video id="video" controls playsinline preload="metadata" aria-label="Source video preview"></video></div>
       <section class="crop-section" aria-labelledby="crop-heading">
-        <div class="section-head editing-title"><div><p class="eyebrow">02 / FRAME</p><h2 id="crop-heading">Vertical crop</h2></div><span class="pill">9:16 SHORTS</span></div>
-        <p class="muted crop-hint">Live preview only. Each saved clip can have its own crop. Zoom in to enable more positioning control.</p>
+        <div class="section-head editing-title"><div><p class="eyebrow">02 / FRAME</p><h2 id="crop-heading">Output preview</h2></div><span class="pill" id="formatPill">9:16 SHORTS</span></div>
+        <p class="muted crop-hint">Preview and format settings apply to the selected clip. Video export is processed locally when requested.</p>
         <div class="crop-layout">
-          <div class="crop-view"><canvas id="cropCanvas" width="270" height="480" aria-label="Live 9 by 16 vertical crop preview"></canvas><span class="crop-caption">9:16 PREVIEW · NOT EXPORTED</span></div>
+          <div class="crop-view"><canvas id="cropCanvas" width="270" height="480" aria-label="Live output crop preview"></canvas><span class="crop-caption" id="cropCaption">9:16 OUTPUT PREVIEW</span></div>
           <div class="crop-controls">
+            <label for="format">Output format</label>
+            <select id="format" aria-label="Output format">
+              <option value="vertical">9:16 — YouTube Shorts</option>
+              <option value="landscape">16:9 — Widescreen</option>
+              <option value="original">Original — no crop</option>
+            </select>
             <label for="cropX">Horizontal position <output id="cropXValue">50%</output></label>
             <input id="cropX" type="range" min="0" max="100" value="50" step="1">
             <label for="cropY">Vertical position <output id="cropYValue">50%</output></label>
@@ -41,7 +47,8 @@
             <label for="cropZoom">Zoom <output id="cropZoomValue">1.00×</output></label>
             <input id="cropZoom" type="range" min="1" max="2" value="1" step="0.01">
             <button id="resetCrop" type="button">Reset crop</button>
-            <p class="muted">Crop settings are captured when you add a clip or save a loaded clip.</p>
+            <label class="check-label"><input id="mute" type="checkbox"> Remove original audio</label>
+            <p class="muted">Format, crop, and audio settings are saved separately with each clip.</p>
           </div>
         </div>
       </section>
@@ -55,7 +62,16 @@
       <div class="section-head"><div><p class="eyebrow">04 / ORGANIZE</p><h2 id="clips-heading">Saved selections</h2></div><span id="count" class="clip-count">0 clips</span></div>
       <p class="muted description">Rename a clip, jump to its footage, or load it to change its timestamps.</p>
       <div id="clips" class="clips"><p class="empty">No clips yet. Select a range and add your first clip.</p></div>
-      <div class="notice"><strong>Coming next</strong><p>FFmpeg.wasm trimming, cropping, local MP4 processing, and batch exports. Saved selections are cleared on refresh.</p></div>
+      <section class="export-section" aria-labelledby="export-heading">
+        <div class="section-head"><div><p class="eyebrow">05 / DELIVER</p><h2 id="export-heading">Export MP4</h2></div><span class="pill">LOCAL DOWNLOAD</span></div>
+        <p class="muted description">Export selected clips with their saved format and crop settings. Encoding runs in this browser; files download to your device. No video is uploaded.</p>
+        <div class="actions"><button id="exportLoaded" class="primary" type="button" disabled>Export loaded clip</button><button id="exportAll" type="button" disabled>Export all clips</button></div>
+        <label class="progress-label" for="progress">Processing <output id="progressText">Not started</output></label>
+        <progress id="progress" max="100" value="0"></progress>
+        <p class="muted export-note">First export requires downloading the FFmpeg engine (~30 MB) from a CDN. This is a single-threaded build. For initial testing, use a short H.264 MP4; long or 4K videos can exceed browser memory.</p>
+        <p id="exportStatus" class="status" role="status" aria-live="polite">Ready to export saved clips.</p>
+      </section>
+      <div class="notice"><strong>Development note</strong><p>Saved selections remain in memory and are cleared when the page is refreshed. Batch export downloads files one at a time; your browser may ask permission for multiple downloads.</p></div>
     </section>
   </main>
   <footer>PURSUIT LEVEL <span>•</span> CLIP STUDIO <span>•</span> PRIVATE, BROWSER-BASED FOOTAGE WORKSPACE</footer>

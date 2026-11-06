@@ -1,39 +1,46 @@
-# Pursuit Level Clip Studio
+# Pursuit Level — Clip Studio
 
-Free, self-hosted, browser-based video clip selection workspace. No sign-in, cloud upload, database or subscriptions.
+A browser-based video clipping workspace, hosted on GitHub Pages. All source video processing stays local to the browser.
 
-## v0.3 development build
+## v0.4 development build
 
-- Import one local MP4, MOV or WebM video using file picker or drag and drop (codec support depends on browser).
-- Preview and seek, mark precise start/end times, preview the range, save multiple clips, rename, jump, delete and edit selections.
-- Live 9:16 vertical crop preview using browser canvas. Adjust horizontal position, vertical position and zoom (1.00×–2.00×). Zoom makes both axes adjustable even when the source's native aspect ratio otherwise locks one axis.
-- Each saved clip stores its own crop settings **in page memory**. Click **Edit range** on a clip to recall them, and **Save loaded clip** to retain edits.
-- Official Pursuit Level sunset six-star logo is provided under `pursuit-level-logo.png`.
+- Drag/drop or browse for MP4, MOV, WebM video.
+- Preview, select precise start and end times, name and manage clips.
+- Source and output previews appear together, ahead of Clip Range.
+- Pick an output format per clip: 9:16 Shorts (720×1280), 16:9 landscape (1280×720), or original dimensions (no crop, except ensuring even dimensions for H.264).
+- Adjust crop X/Y and zoom for 9:16 or 16:9; remove audio per clip.
+- Use **Add new clip**, or **Save loaded clip** after changing saved settings.
+- Click **Export MP4** on a clip, **Export loaded clip**, or **Export all clips**. Downloads go to your browser's download destination.
+- FFmpeg.wasm v0.12.10 single-threaded dependency is downloaded from jsDelivr on first export; **internet is required for this download**, but source video is not uploaded.
 
-## Current limitations
+## Deploy to GitHub Pages
 
-**This version does not export, render, or download clips.** The 9:16 canvas is a preview, not a transformed video file. All clips/settings are cleared on refresh, and importing another file clears the selections. Only one source video is loaded at a time. The exact crop framing may differ from eventual FFmpeg exports until export processing is integrated and tested.
+1. Upload the 6 extracted files into the root of the existing `pursuit-level-clip-studio` repository, replacing the previous files.
+2. Settings → Pages → Deploy from a branch → main → / (root).
+3. Open the published URL and hard refresh if the old version appears.
 
-Preview performance and supported codecs depend on browser/device. Large/4K videos may require substantial memory. No source footage leaves the browser.
+## Test order
 
-## GitHub Pages setup/update
+1. Import a short H.264 MP4 (try under 50 MB), check the logo and drag-and-drop.
+2. Change from 9:16 to 16:9 to Original and inspect the preview.
+3. Add two saved clips with different formats; load each and verify format, crop, and audio settings.
+4. Export a short clip and check it plays in a local player and imports into CapCut.
+5. Try Export all; allow multiple downloads if Chrome prompts.
 
-Upload **all** root files and the `assets` folder to the repository root (not an enclosing `pursuit-level-clip-studio-v0.3` folder). Result:
+## Limitations
 
-```
-index.html
-style.css
-app.js
-README.md
-CHANGELOG.md
-assets/
-  pursuit-level-logo.webp
-```
+- FFmpeg wasm is significantly slower than desktop FFmpeg; it copies the **entire source file into WASM memory**, even for short clips. Some large or 4K sources will fail. There is no universal reliable maximum size. For a first try, use a short source under 50 MB.
+- Some MOV, WebM and MP4 codecs cannot play in every browser. MP4 exports are H.264/AAC (or H.264 only if muted), subject to the encoders compiled into the FFmpeg core.
+- Export is **experimental** and cannot be confirmed on live GitHub Pages from this environment; if the FFmpeg worker or encoder fails, keep using v0.3.1 and report the error from the Export Status line or browser console.
+- A browser may block repeated download prompts during batch export. It downloads clips individually, not as a ZIP.
+- Cropping uses integer/even pixel rounding for H.264, so it can vary slightly from the on-screen preview.
+- Saved selections are not persisted across reloads; source files are never sent to a server.
+- Hosting application files is free, but the first export depends on jsDelivr CDN availability. To remove that dependency later, vendor the engine assets in the repository (separate milestone).
 
-Settings → Pages → Deploy from a branch → `main` → `/ (root)`.
+## Code map
 
-On updates, replace the existing root files, add the new `pursuit-level-logo.png`, and commit. If using GitHub's browser uploader, drag the *contents* of the extracted package (including the `assets` folder) into the upload area. Verify the logo shows after GitHub Pages deployment.
-
-## Next
-
-Integrate FFmpeg.wasm for local MP4 trimming, cropping, optional mute and individual/batch export with processing progress and browser limits.
+- `index.html`: markup, controls
+- `style.css`: branding, layout
+- `app.js`: file handling, clip management, previews and FFmpeg export
+- `pursuit-level-logo.png`: official logo
+- `CHANGELOG.md`: confirmed changes and release candidates

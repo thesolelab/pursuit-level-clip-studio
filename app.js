@@ -5,6 +5,11 @@ const input = $('file');
 const dropzone = $('dropzone');
 const clips = [];
 let sourceURL = null;
+let sourceFile = null;
+let busy = false;
+let ffmpegInstance = null;
+let lastFFmpegLog = '';
+const formats = {vertical: '9:16 Shorts', landscape: '16:9 Widescreen', original: 'Original'};
 let previewEnd = null;
 let editingId = null;
 let nextId = 1;
@@ -27,27 +32,37 @@ function applyCrop(settings) {
   $('cropZoomValue').textContent = `${crop.zoom.toFixed(2)}×`;
   drawCrop();
 }
+function cropRect(fmt = $('format').value, settings = crop) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return null;
+  if (fmt === 'original') return {left: 0, top: 0, width: vw, height: vh};
+  const ratio = fmt === 'landscape' ? 16 / 9 : 9 / 16;
+  const baseW = Math.min(vw, vh * ratio);
+  const baseH = baseW / ratio;
+  const width = baseW / settings.zoom, height = baseH / settings.zoom;
+  return {left: (vw - width) * settings.x / 100, top: (vh - height) * settings.y / 100, width, height};
+}
+function updateFormat() {
+  const fmt = $('format').value;
+  const size = fmt === 'vertical' ? [270, 480] : fmt === 'landscape' ? [480, 270] :
+    (video.videoWidth ? (video.videoWidth >= video.videoHeight ? [480, Math.round(480 * video.videoHeight / video.videoWidth)] : [270, Math.round(270 * video.videoHeight / video.videoWidth)]) : [480, 270]);
+  cropCanvas.width = size[0]; cropCanvas.height = size[1];
+  $('formatPill').textContent = formats[fmt].toUpperCase();
+  $('cropCaption').textContent = `${formats[fmt].toUpperCase()} · OUTPUT PREVIEW`;
+  $('cropX').disabled = $('cropY').disabled = $('cropZoom').disabled = $('resetCrop').disabled = fmt === 'original';
+  $('cropX').closest('.crop-controls').classList.toggle('crop-disabled', fmt === 'original');
+  drawCrop();
+}
 function drawCrop() {
   const w = cropCanvas.width, h = cropCanvas.height;
-  cropCtx.fillStyle = '#08070d';
-  cropCtx.fillRect(0, 0, w, h);
-  if (!video.videoWidth || !video.videoHeight || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-    cropCtx.fillStyle = '#b0a7b6';
-    cropCtx.font = '15px system-ui';
-    cropCtx.textAlign = 'center';
-    cropCtx.fillText('Load video to preview', w / 2, h / 2);
-    return;
+  cropCtx.fillStyle = '#08070d'; cropCtx.fillRect(0, 0, w, h);
+  if (!video.videoWidth || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    cropCtx.fillStyle = '#b0a7b6'; cropCtx.font = '15px system-ui'; cropCtx.textAlign = 'center';
+    cropCtx.fillText('Load video to preview', w / 2, h / 2); return;
   }
-  // Largest source rectangle with 9:16 aspect ratio, then zoom into it.
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const baseW = Math.min(vw, vh * 9 / 16);
-  const baseH = baseW * 16 / 9;
-  const sourceW = baseW / crop.zoom;
-  const sourceH = baseH / crop.zoom;
-  const left = (vw - sourceW) * crop.x / 100;
-  const top = (vh - sourceH) * crop.y / 100;
-  try { cropCtx.drawImage(video, left, top, sourceW, sourceH, 0, 0, w, h); }
-  catch { /* Frame not decoded yet; next seek/frame will update. */ }
+  const rect = cropRect();
+  try { cropCtx.drawImage(video, rect.left, rect.top, rect.width, rect.height, 0, 0, w, h); }
+  catch { /* Draw again on the next available frame. */ }
 }
 function animateCrop() {
   drawCrop();
@@ -60,6 +75,7 @@ function stopCropAnimation() {
   drawCrop();
 }
 ['cropX', 'cropY', 'cropZoom'].forEach(id => $(id).addEventListener('input', () => applyCrop(readCrop())));
+$('format').addEventListener('change', updateFormat);
 $('resetCrop').addEventListener('click', () => { applyCrop(defaultCrop()); status('Vertical crop reset to center.'); });
 video.addEventListener('play', () => { if (cropFrame === null) animateCrop(); });
 video.addEventListener('pause', stopCropAnimation);
@@ -94,6 +110,7 @@ function setEdit(id = null) {
   $('cancelEdit').hidden = id === null;
   $('add').textContent = '+ Add new clip';
   render();
+  exportButtons();
 }
 function loadSelection(clip) {
   $('start').value = stamp(clip.start);
@@ -101,7 +118,10 @@ function loadSelection(clip) {
   previewEnd = null;
   video.pause();
   video.currentTime = clip.start;
+  $('format').value = clip.format || 'vertical';
+  $('mute').checked = Boolean(clip.mute);
   applyCrop(clip.crop || defaultCrop());
+  updateFormat();
   setEdit(clip.id);
   status(`Editing ${clip.name}. Adjust timestamps and select Save loaded clip.`);
 }
@@ -135,10 +155,11 @@ function render() {
     });
     const duration = document.createElement('span'); duration.className = 'clip-duration'; duration.textContent = stamp(clip.end - clip.start);
     top.append(title, name, duration);
-    const detail = document.createElement('p'); detail.className = 'clip-times'; detail.textContent = `${stamp(clip.start)} → ${stamp(clip.end)} · 9:16 / X ${clip.crop?.x ?? 50}% / Y ${clip.crop?.y ?? 50}% / ${Number(clip.crop?.zoom ?? 1).toFixed(2)}×`;
+    const detail = document.createElement('p'); detail.className = 'clip-times'; detail.textContent = `${stamp(clip.start)} → ${stamp(clip.end)} · ${formats[clip.format || 'vertical']} · ${clip.mute ? 'Muted' : 'Audio on'}`;
     const actions = document.createElement('div'); actions.className = 'clip-actions';
     actions.append(
       actionButton('Edit range', () => loadSelection(clip)),
+      actionButton('Export MP4', () => exportClips([clip])),
       actionButton('Jump to', () => { previewEnd = null; video.pause(); video.currentTime = clip.start; status(`Playhead moved to ${clip.name}.`); }),
       actionButton('Delete', () => {
         const at = clips.findIndex(item => item.id === clip.id);
@@ -146,7 +167,7 @@ function render() {
         if (editingId === clip.id) editingId = null;
         $('update').disabled = editingId === null;
         $('cancelEdit').hidden = editingId === null;
-        render(); status('Clip removed.');
+        render(); exportButtons(); status('Clip removed.');
       }, 'danger')
     );
     card.append(top, detail, actions); area.append(card);
@@ -158,8 +179,10 @@ function supportedType(file) {
 function loadFile(file) {
   if (!file) return;
   if (!supportedType(file)) { status('Unsupported file type. Choose an MP4, MOV, or WebM video.'); return; }
+  if (busy) return status('Export in progress. Wait before switching source files.');
   previewEnd = null;
   video.pause();
+  sourceFile = file;
   if (sourceURL) URL.revokeObjectURL(sourceURL);
   sourceURL = URL.createObjectURL(file);
   video.src = sourceURL;
@@ -170,7 +193,11 @@ function loadFile(file) {
   $('update').disabled = true;
   $('cancelEdit').hidden = true;
   $('filename').textContent = `${file.name} · ${(file.size / 1048576).toFixed(1)} MB`;
+  $('format').value = 'vertical';
+  $('mute').checked = false;
   applyCrop(defaultCrop());
+  updateFormat();
+  exportButtons();
   $('start').value = '00:00:00.000';
   $('end').value = '00:00:00.000';
   status('Loading video metadata…');
@@ -207,6 +234,7 @@ window.addEventListener('drop', event => { event.preventDefault(); dragDepth = 0
 video.addEventListener('loadedmetadata', () => {
   if (!Number.isFinite(video.duration)) return status('This file does not report a usable duration.');
   $('end').value = stamp(video.duration);
+  updateFormat();
   status(`Video ready · ${stamp(video.duration)}. Select your clip range.`);
 });
 video.addEventListener('error', () => status('This video cannot be played by your browser. MOV and some MP4 codecs may be unsupported; try an H.264 MP4.'));
@@ -235,7 +263,7 @@ $('preview').addEventListener('click', async () => {
 $('add').addEventListener('click', () => {
   try {
     const {start, end} = selection();
-    const clip = {id: nextId++, name: `Clip ${String(clips.length + 1).padStart(2, '0')}`, start, end, crop: {...crop}};
+    const clip = {id: nextId++, name: `Clip ${String(clips.length + 1).padStart(2, '0')}`, start, end, crop: {...crop}, format: $('format').value, mute: $('mute').checked};
     clips.push(clip); setEdit(null); status('New clip selection added.');
   } catch(error) { status(error.message); }
 });
@@ -243,7 +271,7 @@ $('update').addEventListener('click', () => {
   try {
     const clip = clips.find(item => item.id === editingId);
     if (!clip) throw Error('Load a clip to edit first.');
-    Object.assign(clip, selection(), {crop: {...crop}});
+    Object.assign(clip, selection(), {crop: {...crop}, format: $('format').value, mute: $('mute').checked});
     setEdit(null); status(`Saved changes to ${clip.name}.`);
   } catch(error) { status(error.message); }
 });
@@ -252,3 +280,129 @@ window.addEventListener('beforeunload', () => { if (sourceURL) URL.revokeObjectU
 render();
 
 applyCrop(defaultCrop());
+updateFormat();
+
+
+// FFmpeg.wasm v0.12 single-threaded build. Dependencies load on first export only.
+// We use an object-URL worker to keep GitHub Pages' worker same-origin.
+function exportButtons() {
+  $('exportLoaded').disabled = busy || editingId === null || !sourceFile;
+  $('exportAll').disabled = busy || !clips.length || !sourceFile;
+}
+function reportExport(message, percent = null) {
+  $('exportStatus').textContent = message;
+  if (percent !== null) {
+    $('progress').value = Math.max(0, Math.min(100, percent));
+    $('progressText').textContent = `${Math.round($('progress').value)}%`;
+  } else $('progressText').textContent = 'Working…';
+}
+async function fileAsBlobURL(url, mime) {
+  const response = await fetch(url);
+  if (!response.ok) throw Error(`Couldn't load FFmpeg dependency (${response.status}).`);
+  return URL.createObjectURL(new Blob([await response.arrayBuffer()], {type: mime}));
+}
+async function getFFmpeg() {
+  if (ffmpegInstance) return ffmpegInstance;
+  reportExport('Loading FFmpeg engine. An internet connection is required for the first load…', 0);
+  const version = '0.12.10';
+  const library = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${version}/dist/umd`;
+  const core = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
+  if (!window.FFmpegWASM) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script'); script.src = `${library}/ffmpeg.js`;
+      script.onload = resolve; script.onerror = () => reject(Error('Cannot load FFmpeg library. Check network access or browser blocking.'));
+      document.head.append(script);
+    });
+  }
+  const urls = [];
+  try {
+    const worker = await fileAsBlobURL(`${library}/814.ffmpeg.js`, 'text/javascript'); urls.push(worker);
+    const coreURL = await fileAsBlobURL(`${core}/ffmpeg-core.js`, 'text/javascript'); urls.push(coreURL);
+    const wasmURL = await fileAsBlobURL(`${core}/ffmpeg-core.wasm`, 'application/wasm'); urls.push(wasmURL);
+    const engine = new window.FFmpegWASM.FFmpeg();
+    engine.on('log', ({message}) => {lastFFmpegLog = message;});
+    engine.on('progress', ({progress}) => {
+      if (busy && Number.isFinite(progress) && progress >= 0 && progress <= 1) {
+        reportExport('Encoding MP4 locally…', 15 + 80 * progress);
+      }
+    });
+    await engine.load({classWorkerURL: worker, coreURL, wasmURL});
+    ffmpegInstance = engine;
+    return engine;
+  } finally {
+    // Blob URLs are no longer needed after FFmpeg loads. The engine holds the worker internally.
+    // Keep URLs alive for the worker's lifetime in case it lazily loads scripts.
+    window.__clipStudioEngineURLs = [...(window.__clipStudioEngineURLs || []), ...urls];
+  }
+}
+function even(number, max) {
+  const v = Math.floor(number / 2) * 2;
+  return Math.max(2, Math.min(v, Math.floor(max / 2) * 2));
+}
+function videoFilter(clip) {
+  if (clip.format === 'original') return 'scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1';
+  const {left, top, width, height} = cropRect(clip.format, clip.crop);
+  // Guarantee even crop sizes and in-bounds even offsets for 4:2:0 H.264.
+  const w = even(width, video.videoWidth), h = even(height, video.videoHeight);
+  const x = Math.max(0, Math.min(Math.floor(left / 2) * 2, Math.floor((video.videoWidth - w) / 2) * 2));
+  const y = Math.max(0, Math.min(Math.floor(top / 2) * 2, Math.floor((video.videoHeight - h) / 2) * 2));
+  const dimension = clip.format === 'landscape' ? '1280:720' : '720:1280';
+  return `crop=${w}:${h}:${x}:${y},scale=${dimension},setsar=1`;
+}
+function safeFilename(name) {
+  return (name.replace(/[\\/:*?"<>|\x00-\x1f]/g, '-').trim().replace(/[. ]+$/, '').slice(0, 65) || 'clip');
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+async function exportClips(selected) {
+  if (busy) return;
+  if (!sourceFile || !video.videoWidth) return reportExport('Load a playable video first.', 0);
+  if (!selected.length) return reportExport('Save at least one clip first.', 0);
+  // A practical warning rather than a promise of a universal browser file-size limit.
+  if (sourceFile.size > 450 * 1048576 && !confirm('This source file is over 450 MB. Browser-based encoding may run out of memory or crash. Try a shorter source file if it fails. Continue?')) return;
+  busy = true; exportButtons();
+  const inputName = `source.${(sourceFile.name.split('.').pop() || 'mp4').toLowerCase()}`;
+  let engine = null;
+  try {
+    engine = await getFFmpeg();
+    reportExport('Copying source video into local processing memory…', 5);
+    const bytes = new Uint8Array(await sourceFile.arrayBuffer());
+    await engine.writeFile(inputName, bytes);
+    // Source file is copied once and reused for batch exports.
+    for (let i = 0; i < selected.length; i++) {
+      const clip = selected[i];
+      const outputName = `output_${clip.id}.mp4`;
+      reportExport(`Encoding ${i + 1}/${selected.length}: ${clip.name}`, 15);
+      const args = ['-ss', clip.start.toFixed(3), '-i', inputName, '-t', (clip.end - clip.start).toFixed(3),
+        '-vf', videoFilter(clip), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p'];
+      if (clip.mute) args.push('-an');
+      else args.push('-c:a', 'aac', '-b:a', '128k');
+      args.push('-movflags', '+faststart', '-y', outputName);
+      try {
+        const exitCode = await engine.exec(args);
+        if (exitCode !== 0) throw Error(`FFmpeg exited with code ${exitCode}. ${lastFFmpegLog}`);
+        const result = await engine.readFile(outputName);
+        if (!result.length) throw Error('FFmpeg returned an empty file.');
+        downloadBlob(new Blob([result], {type:'video/mp4'}), `${safeFilename(clip.name)}.mp4`);
+        reportExport(`Downloaded ${i + 1}/${selected.length}: ${clip.name}`, 100);
+      } finally { try {await engine.deleteFile(outputName);} catch {} }
+    }
+    reportExport(`Finished. Downloaded ${selected.length} MP4 clip${selected.length === 1 ? '' : 's'} to your device.`, 100);
+  } catch (error) {
+    reportExport(`Export failed: ${error.message || String(error)}. Try a short H.264 MP4 in desktop Chrome.`, 0);
+    console.error('Clip Studio export error', error);
+  } finally {
+    if (engine) try {await engine.deleteFile(inputName);} catch {}
+    busy = false; exportButtons();
+  }
+}
+$('exportLoaded').addEventListener('click', () => {
+  const clip = clips.find(item => item.id === editingId);
+  if (clip) exportClips([clip]);
+});
+$('exportAll').addEventListener('click', () => exportClips([...clips]));
+exportButtons();

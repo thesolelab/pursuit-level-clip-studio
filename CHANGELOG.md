@@ -1,20 +1,18 @@
 # Changelog
 
-## v0.3 — development candidate (awaiting user testing)
-- Integrate official six-star Pursuit Level logo asset into header.
-- Add live 9:16 crop preview via browser canvas with X, Y and zoom controls.
-- Store crop settings separately per saved clip and reload them for editing.
-- Preserve local import, drag-and-drop, trim selection and clip management.
-- Preview only: no MP4 exports or persistent storage in this release.
+## v0.4 — Development candidate (awaiting browser confirmation)
+- Reorganized source and output previews above Clip Range.
+- Added per-clip 9:16, 16:9, and Original output formats.
+- Added per-clip audio removal, X/Y positioning, zoom, and settings restoration.
+- Added experimental local MP4 exports with FFmpeg.wasm and sequential batch downloads.
+- Preserved official logo, file import, video preview, clip selection, and drag-and-drop.
 
-## v0.2 — drag/drop confirmed
-- User confirmed drag-and-drop video import works.
-- Added clip rename, jump, edit range, and save changes.
-- Dark Pursuit Level styling.
+## v0.3.1 — Confirmed working
+- Simplified logo asset path to repository root.
 
-## v0.1 — confirmed
-- User confirmed the five initial import, preview, and clip selection tests passed.
+## v0.3 — Confirmed working (following v0.3.1 fix)
+- Added output crop preview and per-clip crop controls.
+- Added official Pursuit Level logo.
 
-## v0.3.1 — Logo path fix
-- Moved the official Pursuit Level logo to the repository root so GitHub uploads do not require a nested assets directory.
-- Updated the header image reference; editing behavior unchanged.
+## v0.2 — Confirmed working
+- Added drag-and-drop file importing and clip management improvements.
