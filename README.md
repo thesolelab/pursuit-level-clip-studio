@@ -8,7 +8,7 @@ Free, self-hosted, browser-based video clip selection workspace. No sign-in, clo
 - Preview and seek, mark precise start/end times, preview the range, save multiple clips, rename, jump, delete and edit selections.
 - Live 9:16 vertical crop preview using browser canvas. Adjust horizontal position, vertical position and zoom (1.00×–2.00×). Zoom makes both axes adjustable even when the source's native aspect ratio otherwise locks one axis.
 - Each saved clip stores its own crop settings **in page memory**. Click **Edit range** on a clip to recall them, and **Save loaded clip** to retain edits.
-- Official Pursuit Level sunset six-star logo is provided under `assets/pursuit-level-logo.webp`.
+- Official Pursuit Level sunset six-star logo is provided under `pursuit-level-logo.png`.
 
 ## Current limitations
 
@@ -32,7 +32,7 @@ assets/
 
 Settings → Pages → Deploy from a branch → `main` → `/ (root)`.
 
-On updates, replace the existing root files, add the new `assets/pursuit-level-logo.webp`, and commit. If using GitHub's browser uploader, drag the *contents* of the extracted package (including the `assets` folder) into the upload area. Verify the logo shows after GitHub Pages deployment.
+On updates, replace the existing root files, add the new `pursuit-level-logo.png`, and commit. If using GitHub's browser uploader, drag the *contents* of the extracted package (including the `assets` folder) into the upload area. Verify the logo shows after GitHub Pages deployment.
 
 ## Next
 

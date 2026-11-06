@@ -14,3 +14,7 @@
 
 ## v0.1 — confirmed
 - User confirmed the five initial import, preview, and clip selection tests passed.
+
+## v0.3.1 — Logo path fix
+- Moved the official Pursuit Level logo to the repository root so GitHub uploads do not require a nested assets directory.
+- Updated the header image reference; editing behavior unchanged.
