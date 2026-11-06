@@ -1,21 +1,23 @@
 # Pursuit Level Clip Studio
 
-A free, browser-based local video clip selection workspace.
+A free local-first video clip selection workspace hosted on GitHub Pages. No accounts, upload servers, APIs, or subscriptions.
 
-## Version 0.1
+## Development build v0.2
 
-- Import a local MP4, MOV, or WebM video (playback depends on browser codecs).
-- Preview and seek through source footage.
-- Mark clip start/end using the current playhead or editable `HH:MM:SS.mmm` fields.
-- Preview selected range and save multiple clip selections.
-- Load and delete selections.
+- Open local MP4, MOV, or WebM footage with the file picker **or drag and drop it onto the source area**.
+- Preview and seek through video. Native browser playback requires supported codecs; some MOV and MP4 files may not play.
+- Mark clip start/end using the playhead or `HH:MM:SS.mmm` timestamps; preview the range.
+- Add multiple selections; rename, jump to, delete, and revise their time ranges.
+- Desktop and mobile responsive dark Pursuit Level branding, including the six wanted stars.
 
-No upload or server-side processing occurs. Clips are **timestamp selections**, not exported video files, and are cleared when a new source is loaded or the page is refreshed.
+Clip selections are not output video files. No files are uploaded to a server. Selections are cleared when a new video is loaded or the page is refreshed. The app supports **one source video at a time**. The video may consume browser memory even though it is loaded locally.
 
-## Deployment
+## Deploy
 
-Create a public GitHub repository named `pursuit-level-clip-studio`. Upload the files in this folder to the repository root. In **Settings → Pages**, select **Deploy from a branch**, `main`, and `/ (root)`. The site will be available at `https://YOUR-USERNAME.github.io/pursuit-level-clip-studio/` after deployment.
+Upload `index.html`, `style.css`, `app.js`, `README.md`, and `CHANGELOG.md` to the root of a public GitHub repo named `pursuit-level-clip-studio`. GitHub → Settings → Pages → Deploy from a branch → main → / (root).
+
+For updates, replace the existing root files with the matching files from this version (GitHub's **Add file → Upload files** can overwrite existing filenames when committing).
 
 ## Roadmap
 
-Clip naming and management → crop positioning → FFmpeg.wasm MP4 export → batch export.
+9:16 crop preview and positioning → FFmpeg.wasm trimming/crop/mute/export → individual and batch MP4 exports with progress.

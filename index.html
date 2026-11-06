@@ -1,3 +1,46 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pursuit Level | Clip Studio</title><link rel="stylesheet" href="style.css"></head>
-<body><header><div class="brand"><span class="stars">★★★★★★</span><strong>PURSUIT LEVEL</strong><span class="sub">CLIP STUDIO</span></div><span class="version">v0.1 · Selection workspace</span></header><main><section class="panel"><h1>Source footage</h1><label class="upload" for="file">Choose a video <small>MP4, MOV or WebM · processed locally</small></label><input id="file" type="file" accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm"><p id="filename" class="muted">No video loaded</p><video id="video" controls playsinline preload="metadata"></video><div class="seek"><button id="setStart">Set start at playhead</button><button id="setEnd">Set end at playhead</button></div><div class="fields"><label>Start <input id="start" type="text" value="00:00:00.000" aria-label="Clip start timestamp"></label><label>End <input id="end" type="text" value="00:00:00.000" aria-label="Clip end timestamp"></label></div><div class="actions"><button id="preview">Preview selection</button><button id="add" class="primary">Add clip</button></div><p id="status" role="status" class="muted">Load a video to begin.</p></section><section class="panel"><div class="heading"><h2>Clip selections</h2><span id="count">0 clips</span></div><p class="muted">Selections are saved in this browser session only. Export will be added in a later version.</p><div id="clips" class="clips"><p class="empty">No clips yet. Set a start and end time, then select Add clip.</p></div></section></main><footer>Local-first video workspace · Pursuit Level</footer><script src="app.js" defer></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080b11">
+  <title>Pursuit Level | Clip Studio</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="identity">
+      <div class="stars" aria-label="Six wanted stars">★★★★★★</div>
+      <div class="brand-line"><strong>PURSUIT <span>LEVEL</span></strong><span class="brand-divider"></span><span class="app-name">CLIP STUDIO</span></div>
+    </div>
+    <span class="version">v0.2 / LOCAL WORKSPACE</span>
+  </header>
+  <main>
+    <section class="panel editor-panel" aria-labelledby="source-heading">
+      <div class="section-head"><div><p class="eyebrow">01 / SOURCE</p><h1 id="source-heading">Footage workspace</h1></div><span class="pill">LOCAL ONLY</span></div>
+      <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Drop a video here or choose a video file">
+        <div class="drop-icon" aria-hidden="true">↥</div>
+        <strong>Drag &amp; drop your video here</strong>
+        <span>or <span class="file-link">browse files</span> to select footage</span>
+        <small>MP4 · MOV · WebM / Playback depends on your browser's codecs</small>
+        <input id="file" type="file" accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm" aria-label="Choose a video file">
+      </div>
+      <p id="filename" class="file-meta">No video loaded</p>
+      <video id="video" controls playsinline preload="metadata" aria-label="Source video preview"></video>
+      <div class="section-head editing-title"><div><p class="eyebrow">02 / MARK</p><h2>Clip range</h2></div><span class="muted">HH:MM:SS.mmm</span></div>
+      <div class="seek"><button id="setStart" type="button">Set start at playhead</button><button id="setEnd" type="button">Set end at playhead</button></div>
+      <div class="fields"><label for="start">START <input id="start" type="text" value="00:00:00.000" spellcheck="false"></label><label for="end">END <input id="end" type="text" value="00:00:00.000" spellcheck="false"></label></div>
+      <div class="actions"><button id="preview" type="button">▶ Preview range</button><button id="add" class="primary" type="button">+ Add new clip</button><button id="update" type="button" disabled>Save loaded clip</button><button id="cancelEdit" type="button" hidden>Cancel editing</button></div>
+      <p id="status" role="status" aria-live="polite" class="status">Load a video to begin.</p>
+    </section>
+    <section class="panel clips-panel" aria-labelledby="clips-heading">
+      <div class="section-head"><div><p class="eyebrow">03 / ORGANIZE</p><h2 id="clips-heading">Saved selections</h2></div><span id="count" class="clip-count">0 clips</span></div>
+      <p class="muted description">Rename a clip, jump to its footage, or load it to change its timestamps.</p>
+      <div id="clips" class="clips"><p class="empty">No clips yet. Select a range and add your first clip.</p></div>
+      <div class="notice"><strong>Coming next</strong><p>9:16 crop preview, local MP4 processing, and batch exports. Saved selections are cleared on refresh.</p></div>
+    </section>
+  </main>
+  <footer>PURSUIT LEVEL <span>•</span> CLIP STUDIO <span>•</span> PRIVATE, BROWSER-BASED FOOTAGE WORKSPACE</footer>
+</body>
+</html>
