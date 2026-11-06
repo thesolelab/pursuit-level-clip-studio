@@ -1,23 +1,39 @@
 # Pursuit Level Clip Studio
 
-A free local-first video clip selection workspace hosted on GitHub Pages. No accounts, upload servers, APIs, or subscriptions.
+Free, self-hosted, browser-based video clip selection workspace. No sign-in, cloud upload, database or subscriptions.
 
-## Development build v0.2
+## v0.3 development build
 
-- Open local MP4, MOV, or WebM footage with the file picker **or drag and drop it onto the source area**.
-- Preview and seek through video. Native browser playback requires supported codecs; some MOV and MP4 files may not play.
-- Mark clip start/end using the playhead or `HH:MM:SS.mmm` timestamps; preview the range.
-- Add multiple selections; rename, jump to, delete, and revise their time ranges.
-- Desktop and mobile responsive dark Pursuit Level branding, including the six wanted stars.
+- Import one local MP4, MOV or WebM video using file picker or drag and drop (codec support depends on browser).
+- Preview and seek, mark precise start/end times, preview the range, save multiple clips, rename, jump, delete and edit selections.
+- Live 9:16 vertical crop preview using browser canvas. Adjust horizontal position, vertical position and zoom (1.00×–2.00×). Zoom makes both axes adjustable even when the source's native aspect ratio otherwise locks one axis.
+- Each saved clip stores its own crop settings **in page memory**. Click **Edit range** on a clip to recall them, and **Save loaded clip** to retain edits.
+- Official Pursuit Level sunset six-star logo is provided under `assets/pursuit-level-logo.webp`.
 
-Clip selections are not output video files. No files are uploaded to a server. Selections are cleared when a new video is loaded or the page is refreshed. The app supports **one source video at a time**. The video may consume browser memory even though it is loaded locally.
+## Current limitations
 
-## Deploy
+**This version does not export, render, or download clips.** The 9:16 canvas is a preview, not a transformed video file. All clips/settings are cleared on refresh, and importing another file clears the selections. Only one source video is loaded at a time. The exact crop framing may differ from eventual FFmpeg exports until export processing is integrated and tested.
 
-Upload `index.html`, `style.css`, `app.js`, `README.md`, and `CHANGELOG.md` to the root of a public GitHub repo named `pursuit-level-clip-studio`. GitHub → Settings → Pages → Deploy from a branch → main → / (root).
+Preview performance and supported codecs depend on browser/device. Large/4K videos may require substantial memory. No source footage leaves the browser.
 
-For updates, replace the existing root files with the matching files from this version (GitHub's **Add file → Upload files** can overwrite existing filenames when committing).
+## GitHub Pages setup/update
 
-## Roadmap
+Upload **all** root files and the `assets` folder to the repository root (not an enclosing `pursuit-level-clip-studio-v0.3` folder). Result:
 
-9:16 crop preview and positioning → FFmpeg.wasm trimming/crop/mute/export → individual and batch MP4 exports with progress.
+```
+index.html
+style.css
+app.js
+README.md
+CHANGELOG.md
+assets/
+  pursuit-level-logo.webp
+```
+
+Settings → Pages → Deploy from a branch → `main` → `/ (root)`.
+
+On updates, replace the existing root files, add the new `assets/pursuit-level-logo.webp`, and commit. If using GitHub's browser uploader, drag the *contents* of the extracted package (including the `assets` folder) into the upload area. Verify the logo shows after GitHub Pages deployment.
+
+## Next
+
+Integrate FFmpeg.wasm for local MP4 trimming, cropping, optional mute and individual/batch export with processing progress and browser limits.
