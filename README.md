@@ -1,21 +1,15 @@
-# Pursuit Level Clip Studio v0.4.1 — Export loader fix (test build)
+# Pursuit Level Clip Studio v0.4.2 — FFmpeg loading test
 
-This release is a targeted fix to v0.4's FFmpeg.wasm initialization error. It retains the branded UI, drag-and-drop import, output preview, clip management, crop settings and export controls.
+This update addresses the `failed to import ffmpeg-core.js` error seen in v0.4.1. It retains all existing Clip Studio features.
 
-## Changes
+## Update GitHub Pages
 
-- Keeps FFmpeg's class worker in an origin-compatible Blob URL.
-- Loads `ffmpeg-core.js` and `ffmpeg-core.wasm` from real HTTPS URLs rather than ephemeral Blob URLs, avoiding a likely failed `importScripts()` path in the worker.
-- Shows a more specific initialization error if loading still fails.
-
-## How to update
-
-Extract and upload all six files to the root of your existing GitHub repository. Replace the previous files and commit, then hard-refresh the GitHub Pages website (Ctrl+Shift+R).
+Upload these six files to the **root** of your existing repository (not a nested folder), replace the old versions, commit, then hard-refresh using Ctrl+Shift+R.
 
 ## Test
 
-Import a small, browser-playable H.264 MP4, save a short clip, and choose Export loaded clip. Confirm the MP4 downloads, plays and imports into CapCut. If there is still an error, send its exact text and the browser console details.
+Use a short, playable H.264 MP4 and export a saved clip. The loader now downloads FFmpeg core JavaScript and WASM (~30 MB) from jsDelivr, converts them to temporary browser object URLs, then initializes the worker. The **video stays on your device**. The export may still fail if CDN access is restricted or the browser cannot allocate enough memory. If it fails, capture the console error (F12 > Console) and the red message.
 
-## Limitations
+## Status
 
-The fix has passed JavaScript syntax validation, but the FFmpeg engine has **not** been verified end-to-end on a live GitHub Pages site. Network availability and CDN browser policies can still prevent loading. Browser memory and codec restrictions remain, particularly with larger videos. Video files continue to be processed locally; remote CDNs supply only the processing code.
+JavaScript syntax checked, but FFmpeg initialization and encoding have not been verified end-to-end in Chrome/GitHub Pages. Do not consider export production-ready until the user confirms both MP4 playback and CapCut import.

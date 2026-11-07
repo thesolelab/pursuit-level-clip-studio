@@ -316,12 +316,19 @@ async function getFFmpeg() {
       document.head.append(script);
     });
   }
-  // FFmpeg's worker must be same-origin; a Blob URL makes it so on GitHub Pages.
-  // Core JS is passed as a real HTTPS URL to avoid the worker's failing import
-  // of an ephemeral Blob URL ("failed to import ffmpeg-core.js").
-  let workerURL;
+  // The FFmpeg class worker must run on an origin-compatible Blob URL.
+  // Both core files must also use Blob URLs: importScripts() inside a worker
+  // cannot reliably import a cross-origin CDN script directly.
+  const temporaryURLs = [];
   try {
-    workerURL = await fileAsBlobURL(`${library}/814.ffmpeg.js`, 'text/javascript');
+    reportExport('Downloading FFmpeg worker…', 1);
+    const classWorkerURL = await fileAsBlobURL(`${library}/814.ffmpeg.js`, 'text/javascript');
+    temporaryURLs.push(classWorkerURL);
+    reportExport('Downloading FFmpeg core (~30 MB)…', 2);
+    const coreURL = await fileAsBlobURL(`${core}/ffmpeg-core.js`, 'text/javascript');
+    temporaryURLs.push(coreURL);
+    const wasmURL = await fileAsBlobURL(`${core}/ffmpeg-core.wasm`, 'application/wasm');
+    temporaryURLs.push(wasmURL);
     const engine = new window.FFmpegWASM.FFmpeg();
     engine.on('log', ({message}) => { lastFFmpegLog = message; });
     engine.on('progress', ({progress}) => {
@@ -330,16 +337,13 @@ async function getFFmpeg() {
       }
     });
     reportExport('Initializing FFmpeg core…', 3);
-    await engine.load({
-      classWorkerURL: workerURL,
-      coreURL: `${core}/ffmpeg-core.js`,
-      wasmURL: `${core}/ffmpeg-core.wasm`
-    });
+    await engine.load({ classWorkerURL, coreURL, wasmURL });
     ffmpegInstance = engine;
-    window.__clipStudioEngineURLs = [...(window.__clipStudioEngineURLs || []), workerURL];
+    // The worker may reference these Blob URLs for its lifetime.
+    window.__clipStudioEngineURLs = [...(window.__clipStudioEngineURLs || []), ...temporaryURLs];
     return engine;
   } catch (error) {
-    if (workerURL) URL.revokeObjectURL(workerURL);
+    for (const url of temporaryURLs) URL.revokeObjectURL(url);
     throw Error(`FFmpeg engine initialization failed: ${error.message || String(error)}`);
   }
 }

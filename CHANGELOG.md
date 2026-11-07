@@ -1,12 +1,15 @@
 # Changelog
 
-## v0.4.1 — Test build (not yet confirmed)
+## v0.4.2 — Export loader test build (awaiting browser confirmation)
 
-- Correct FFmpeg worker initialization approach: worker remains a local Blob URL; the core script and WASM use direct HTTPS URLs instead of temporary Blob URLs.
-- Improve diagnostics for FFmpeg initialization failures.
-- Preserve all existing v0.4 interface and clip editing features.
+- Align FFmpeg loading with official ffmpeg.wasm guidance: fetch the core JavaScript and WASM, then provide origin-compatible Blob URLs to the worker.
+- Preserve source import, crop editor, clip selections, output formats and branding.
+- Show separate download/initialization status.
 
-## v0.4 — Previous development build
+## v0.4.1 — Unsuccessful loader test
 
-- Source/output previews above clip range.
-- Three per-clip output formats, crop controls, audio choice and experimental individual/batch MP4 export.
+- Direct cross-origin core URL caused `failed to import ffmpeg-core.js` in user testing.
+
+## v0.4 — Development build
+
+- Three output formats and experimental MP4 export.
