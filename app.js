@@ -319,7 +319,7 @@ async function getFFmpeg() {
         document.head.append(script);
       });
     }
-    reportExport('Initializing locally hosted FFmpeg…', 3);
+    reportExport('Initializing ESM FFmpeg core…', 3);
     const engine = new window.FFmpegWASM.FFmpeg();
     engine.on('log', ({message}) => { lastFFmpegLog = message; });
     engine.on('progress', ({progress}) => {
@@ -327,7 +327,7 @@ async function getFFmpeg() {
         reportExport('Encoding MP4 locally…', 15 + 80 * progress);
       }
     });
-    // Same-origin worker and core files. No CDN or Blob URL workaround.
+    // The module worker requires the ESM core build. The GitHub workflow publishes it locally.
     await engine.load({
       classWorkerURL: url('814.ffmpeg.js'),
       coreURL: url('ffmpeg-core.js'),

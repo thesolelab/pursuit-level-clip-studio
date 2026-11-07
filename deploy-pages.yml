@@ -1,4 +1,4 @@
-name: Deploy Clip Studio with FFmpeg (v0.4.5)
+name: Deploy Clip Studio with FFmpeg (v0.4.6)
 
 on:
   push:
@@ -43,15 +43,17 @@ jobs:
           tar -xzf /tmp/ffmpeg-core-0.12.10.tgz -C /tmp/clip-core
           cp /tmp/clip-ffmpeg/package/dist/umd/ffmpeg.js vendor/ffmpeg/
           cp /tmp/clip-ffmpeg/package/dist/umd/814.ffmpeg.js vendor/ffmpeg/
-          cp /tmp/clip-core/package/dist/umd/ffmpeg-core.js vendor/ffmpeg/
-          cp /tmp/clip-core/package/dist/umd/ffmpeg-core.wasm vendor/ffmpeg/
+          cp /tmp/clip-core/package/dist/esm/ffmpeg-core.js vendor/ffmpeg/
+          cp /tmp/clip-core/package/dist/esm/ffmpeg-core.wasm vendor/ffmpeg/
           touch .nojekyll
           for file in ffmpeg.js 814.ffmpeg.js ffmpeg-core.js ffmpeg-core.wasm; do
             test -s "vendor/ffmpeg/$file" || { echo "MISSING: $file"; exit 1; }
           done
           test "$(stat -c%s vendor/ffmpeg/ffmpeg-core.wasm)" -gt 30000000
-          grep -q 'v0.4.5 / LOCAL WORKSPACE' index.html
-          echo "Confirmed v0.4.5 app and all four engine files in deployment artifact:"
+          # Fail deployment if the core is not an ES module.
+          grep -Eq 'export[[:space:]]*(default|\{)' vendor/ffmpeg/ffmpeg-core.js || { echo 'CORE IS NOT ESM'; exit 1; }
+          grep -q 'v0.4.6 / LOCAL WORKSPACE' index.html
+          echo "Confirmed v0.4.6 app and all four engine files in deployment artifact:"
           ls -lh vendor/ffmpeg
 
       - name: Configure GitHub Pages

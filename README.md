@@ -1,3 +1,11 @@
+## v0.4.6 FFmpeg compatibility update
+
+The GitHub Pages workflow publishes the ESM variant of @ffmpeg/core@0.12.10 because the FFmpeg worker runs with `type: "module"`. The wasm file is served from the same directory.
+
+Do not upload the ZIP itself. Update the root app files as usual; update `.github/workflows/deploy-pages.yml` in that exact existing GitHub folder. Check the workflow named `Deploy Clip Studio with FFmpeg (v0.4.6)` for success.
+
+First export with a short MP4 using Original output. FFmpeg initialization and actual export are unverified in a live browser.
+
 # Pursuit Level Clip Studio v0.4.5
 
 This package contains the app and a GitHub Actions deployment that obtains and publishes the pinned FFmpeg files automatically. It does **not** include the WebAssembly binary.

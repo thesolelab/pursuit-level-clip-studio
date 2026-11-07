@@ -1,3 +1,9 @@
+## v0.4.6 — ESM core compatibility (awaiting browser validation)
+- Deploy the ESM FFmpeg core instead of the UMD core to match the module worker.
+- Add workflow check that fails if the wrong core bundle is published.
+- Bump application label and cache query to v0.4.6.
+- Preserve video import, crop, and clip-management behavior.
+
 # Changelog
 
 ## v0.4.5 — Candidate, not user-verified
