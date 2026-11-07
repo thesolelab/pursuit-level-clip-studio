@@ -1,23 +1,25 @@
-## v0.4.6 FFmpeg compatibility update
+# Pursuit Level Clip Studio v0.5.0
 
-The GitHub Pages workflow publishes the ESM variant of @ffmpeg/core@0.12.10 because the FFmpeg worker runs with `type: "module"`. The wasm file is served from the same directory.
+A local-browser video clip editor for Pursuit Level. Import MP4/MOV/WebM, preview and select multiple clips, edit 9:16/16:9/original framing, mute audio, export MP4 or batch ZIP, and save/reopen project JSON.
 
-Do not upload the ZIP itself. Update the root app files as usual; update `.github/workflows/deploy-pages.yml` in that exact existing GitHub folder. Check the workflow named `Deploy Clip Studio with FFmpeg (v0.4.6)` for success.
+## GitHub Pages deployment
 
-First export with a short MP4 using Original output. FFmpeg initialization and actual export are unverified in a live browser.
+Upload the **six root files** (`index.html`, `style.css`, `app.js`, `pursuit-level-logo.png`, `README.md`, `CHANGELOG.md`) to your existing repository. The existing **validated** `.github/workflows/deploy-pages.yml` stays unchanged and downloads/publishes the correct FFmpeg packages for GitHub Pages. Keep Pages source set to GitHub Actions.
 
-# Pursuit Level Clip Studio v0.4.5
+**No video or projects are uploaded to a server.** Processing is local.
 
-This package contains the app and a GitHub Actions deployment that obtains and publishes the pinned FFmpeg files automatically. It does **not** include the WebAssembly binary.
+## Project files
 
-## Upload and deploy
+Click **Save project** to download a JSON file that stores clip names, start/end times, output format, crop, audio and resolution settings. **Open project** to select that JSON and then select the matching source video (same name and file size) from your device. JSON does *not* contain video bytes; keep the source video. Loading a new source normally clears the current clip list.
 
-1. Extract the ZIP. In GitHub, upload `index.html`, `app.js`, `style.css`, `pursuit-level-logo.png`, `README.md`, `CHANGELOG.md`, plus `.github/workflows/deploy-pages.yml` in that **exact nested path**. Note: Windows may hide folders beginning with a dot; turn on View > Show > Hidden items, or copy the `.github` folder via File Explorer.
-2. Commit to `main` and set Settings > Pages > Source to **GitHub Actions**.
-3. In Actions, look for the workflow named **Deploy Clip Studio with FFmpeg (v0.4.5)**. A green check on any other workflow does not count.
-4. Open the published page and verify the header says `v0.4.5`.
-5. Before testing export, navigate to `https://YOUR-USERNAME.github.io/pursuit-level-clip-studio/vendor/ffmpeg/ffmpeg.js`. It should display minified JavaScript, not 404. Then attempt short MP4 export.
+## Exports
 
-If the named workflow is absent, the `.github/workflows` file was not uploaded at the correct path. If the named workflow fails, inspect its failing step in Actions.
+- Individual export: MP4. Batch (two or more selected clips): one ZIP containing separate MP4 files.
+- 720p and 1080p presets, or source resolution. Original mode uses aspect-preserving scaling, not cropping. Cropped videos use 9:16 or 16:9 output.
+- A frame-step choice of 24/30/60 fps offers approximate seeking, not guaranteed frame-accurate decoding.
+- ZIP assembly buffers multiple encoded videos in browser memory; start with small clips. Browser FFmpeg can struggle with long or 4K footage.
+- FFmpeg engine is downloaded once from your own published GitHub Pages site and works in browser memory. No paid APIs.
 
-The FFmpeg initialization/export fix is not yet verified in a live browser. Processing stays local; FFmpeg dependencies are downloaded by GitHub Actions during publishing.
+## Validation
+
+Syntax and ZIP structure are checked at build time. **Browser functionality requires user validation**, especially the local FFmpeg export and ZIP file import into CapCut.

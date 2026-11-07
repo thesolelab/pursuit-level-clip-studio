@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080b11">
   <title>Pursuit Level | Clip Studio</title>
-  <link rel="stylesheet" href="style.css?v=0.4.5">
-  <script src="app.js?v=0.4.6" defer></script>
+  <link rel="stylesheet" href="style.css?v=0.5.0">
+  <script src="app.js?v=0.5.0" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -14,7 +14,7 @@
       <img class="brand-logo" src="pursuit-level-logo.png" alt="Pursuit Level — six-star sunset logo" width="76" height="76">
       <div class="brand-title"><strong>CLIP STUDIO</strong><span>PURSUIT LEVEL / FOOTAGE WORKSPACE</span></div>
     </div>
-    <span class="version">v0.4.6 / LOCAL WORKSPACE</span>
+    <span class="version">v0.5.0 / LOCAL WORKSPACE</span>
   </header>
   <main>
     <section class="panel editor-panel" aria-labelledby="source-heading">
@@ -53,6 +53,16 @@
         </div>
       </section>
       <div class="section-head editing-title"><div><p class="eyebrow">03 / MARK</p><h2>Clip range</h2></div><span class="muted">HH:MM:SS.mmm</span></div>
+      <section class="timeline" aria-label="Video timeline">
+        <div class="timeline-header"><strong>TIMELINE</strong><output id="playheadTime">00:00:00.000</output></div>
+        <label for="playhead">Playhead</label><input type="range" id="playhead" min="0" max="1" value="0" step="0.001" disabled>
+        <div class="range-rail"><label for="rangeStart">Clip start</label><input type="range" id="rangeStart" min="0" max="1" value="0" step="0.001" disabled>
+        <label for="rangeEnd">Clip end</label><input type="range" id="rangeEnd" min="0" max="1" value="1" step="0.001" disabled></div>
+        <div class="frame-controls"><label for="fps">Frame step (approx.)</label><select id="fps"><option value="24">24 fps</option><option value="30" selected>30 fps</option><option value="60">60 fps</option></select>
+        <button type="button" id="frameBack" aria-label="Back one approximate frame">◀ Frame</button><button type="button" id="frameForward" aria-label="Forward one approximate frame">Frame ▶</button></div>
+        <div class="nudge-controls"><button type="button" id="startBack">Start −0.1s</button><button type="button" id="startForward">Start +0.1s</button><button type="button" id="endBack">End −0.1s</button><button type="button" id="endForward">End +0.1s</button></div>
+        <p class="muted timeline-note">The frame buttons seek by the selected frame interval; exact frame accuracy depends on the source frame rate and browser decoding.</p>
+      </section>
       <div class="seek"><button id="setStart" type="button">Set start at playhead</button><button id="setEnd" type="button">Set end at playhead</button></div>
       <div class="fields"><label for="start">START <input id="start" type="text" value="00:00:00.000" spellcheck="false"></label><label for="end">END <input id="end" type="text" value="00:00:00.000" spellcheck="false"></label></div>
       <div class="actions"><button id="preview" type="button">▶ Preview range</button><button id="add" class="primary" type="button">+ Add new clip</button><button id="update" type="button" disabled>Save loaded clip</button><button id="cancelEdit" type="button" hidden>Cancel editing</button></div>
@@ -61,17 +71,19 @@
     <section class="panel clips-panel" aria-labelledby="clips-heading">
       <div class="section-head"><div><p class="eyebrow">04 / ORGANIZE</p><h2 id="clips-heading">Saved selections</h2></div><span id="count" class="clip-count">0 clips</span></div>
       <p class="muted description">Rename a clip, jump to its footage, or load it to change its timestamps.</p>
+      <section class="project-section" aria-labelledby="project-heading"><h3 id="project-heading">Project file</h3><p class="muted">Save selections to a JSON project file. Reopen it later using the same original video. Video footage is never embedded in the project.</p><div class="actions"><button id="saveProject" type="button">Save project</button><button id="openProject" type="button">Open project</button><input id="projectFile" type="file" accept=".json,application/json" hidden></div></section>
       <div id="clips" class="clips"><p class="empty">No clips yet. Select a range and add your first clip.</p></div>
       <section class="export-section" aria-labelledby="export-heading">
         <div class="section-head"><div><p class="eyebrow">05 / DELIVER</p><h2 id="export-heading">Export MP4</h2></div><span class="pill">LOCAL DOWNLOAD</span></div>
         <p class="muted description">Export selected clips with their saved format and crop settings. Encoding runs in this browser; files download to your device. No video is uploaded.</p>
-        <div class="actions"><button id="exportLoaded" class="primary" type="button" disabled>Export loaded clip</button><button id="exportAll" type="button" disabled>Export all clips</button></div>
+        <div class="quality-row"><label for="quality">Output resolution</label><select id="quality"><option value="720">720p — faster / smaller</option><option value="1080">1080p — higher detail</option><option value="source">Source resolution — no resizing</option></select><p class="muted">Output resolution is saved for each clip. For Original framing, 720p and 1080p fit within a matching landscape or portrait box without changing the aspect ratio.</p></div>
+        <div class="actions"><button id="exportLoaded" class="primary" type="button" disabled>Export loaded clip</button><button id="exportAll" type="button" disabled>Export all as ZIP</button></div>
         <label class="progress-label" for="progress">Processing <output id="progressText">Not started</output></label>
         <progress id="progress" max="100" value="0"></progress>
         <p class="muted export-note">First export requires downloading the FFmpeg engine (~32 MB) from your site. This is a single-threaded build. For initial testing, use a short H.264 MP4; long or 4K videos can exceed browser memory.</p>
         <p id="exportStatus" class="status" role="status" aria-live="polite">Ready to export saved clips.</p>
       </section>
-      <div class="notice"><strong>Development note</strong><p>Saved selections remain in memory and are cleared when the page is refreshed. Batch export downloads files one at a time; your browser may ask permission for multiple downloads.</p></div>
+      <div class="notice"><strong>Development note</strong><p>Projects can be downloaded and reopened from JSON. Keep the source video on your device. ZIP packaging holds exported clips in browser memory and may be demanding with large source files.</p></div>
     </section>
   </main>
   <footer>PURSUIT LEVEL <span>•</span> CLIP STUDIO <span>•</span> PRIVATE, BROWSER-BASED FOOTAGE WORKSPACE</footer>
