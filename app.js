@@ -296,11 +296,11 @@ function reportExport(message, percent = null) {
     $('progressText').textContent = `${Math.round($('progress').value)}%`;
   } else $('progressText').textContent = 'Working…';
 }
-// Self-hosted FFmpeg files. Add the four files documented in README.md.
+// Self-hosted FFmpeg files, included in the GitHub Actions published artifact.
 // All paths are relative to the published GitHub Pages application.
 async function verifyEngineFile(path) {
   const response = await fetch(path, { method: 'HEAD', cache: 'no-store' });
-  if (!response.ok) throw Error(`Required engine file missing: ${path} (HTTP ${response.status}). See README.md.`);
+  if (!response.ok) throw Error(`Required engine file missing: ${path} (HTTP ${response.status}). Verify that the custom Deploy Clip Studio workflow ran successfully.`);
 }
 async function getFFmpeg() {
   if (ffmpegInstance) return ffmpegInstance;

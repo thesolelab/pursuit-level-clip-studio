@@ -1,8 +1,8 @@
 # Changelog
 
-## v0.4.4 — automatic GitHub Pages deployment test (not yet validated)
-- Added GitHub Actions workflow to retrieve pinned FFmpeg packages during deployment.
-- Published processing files will be same-origin under `vendor/ffmpeg/`.
-- Removed the placeholder vendor upload requirement.
-- Kept v0.4.3 editing and export logic unchanged.
-- MP4 export remains unverified until live browser testing.
+## v0.4.5 — Candidate, not user-verified
+- Corrected version label shown in the header.
+- Deploy from a clean `publish/` directory rather than repository root.
+- Explicitly check that all four FFmpeg binaries and v0.4.5 HTML are in the site artifact before deploying.
+- Documented the need to see the **named custom GitHub Actions workflow**, not merely any green Pages deployment.
+- Kept video import, clip settings, branding, and output controls unchanged.
