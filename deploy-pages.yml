@@ -1,0 +1,62 @@
+name: Deploy Clip Studio with self-hosted FFmpeg
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out Clip Studio
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Download pinned FFmpeg engine into published site
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP_DIR="$(mktemp -d)"
+          cd "$TMP_DIR"
+          npm pack @ffmpeg/ffmpeg@0.12.10 --silent > /dev/null
+          tar -xzf ffmpeg-ffmpeg-0.12.10.tgz
+          test -s package/dist/umd/ffmpeg.js
+          test -s package/dist/umd/814.ffmpeg.js
+          mkdir -p "$GITHUB_WORKSPACE/vendor/ffmpeg"
+          cp package/dist/umd/ffmpeg.js package/dist/umd/814.ffmpeg.js "$GITHUB_WORKSPACE/vendor/ffmpeg/"
+          rm -rf package
+          npm pack @ffmpeg/core@0.12.10 --silent > /dev/null
+          tar -xzf ffmpeg-core-0.12.10.tgz
+          test -s package/dist/umd/ffmpeg-core.js
+          test -s package/dist/umd/ffmpeg-core.wasm
+          cp package/dist/umd/ffmpeg-core.js package/dist/umd/ffmpeg-core.wasm "$GITHUB_WORKSPACE/vendor/ffmpeg/"
+          ls -lh "$GITHUB_WORKSPACE/vendor/ffmpeg/"
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

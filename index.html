@@ -14,7 +14,7 @@
       <img class="brand-logo" src="pursuit-level-logo.png" alt="Pursuit Level — six-star sunset logo" width="76" height="76">
       <div class="brand-title"><strong>CLIP STUDIO</strong><span>PURSUIT LEVEL / FOOTAGE WORKSPACE</span></div>
     </div>
-    <span class="version">v0.4.2 / LOCAL WORKSPACE</span>
+    <span class="version">v0.4.3 / LOCAL WORKSPACE</span>
   </header>
   <main>
     <section class="panel editor-panel" aria-labelledby="source-heading">
@@ -68,7 +68,7 @@
         <div class="actions"><button id="exportLoaded" class="primary" type="button" disabled>Export loaded clip</button><button id="exportAll" type="button" disabled>Export all clips</button></div>
         <label class="progress-label" for="progress">Processing <output id="progressText">Not started</output></label>
         <progress id="progress" max="100" value="0"></progress>
-        <p class="muted export-note">First export requires downloading the FFmpeg engine (~30 MB) from a CDN. This is a single-threaded build. For initial testing, use a short H.264 MP4; long or 4K videos can exceed browser memory.</p>
+        <p class="muted export-note">First export requires downloading the FFmpeg engine (~32 MB) from your site. This is a single-threaded build. For initial testing, use a short H.264 MP4; long or 4K videos can exceed browser memory.</p>
         <p id="exportStatus" class="status" role="status" aria-live="polite">Ready to export saved clips.</p>
       </section>
       <div class="notice"><strong>Development note</strong><p>Saved selections remain in memory and are cleared when the page is refreshed. Batch export downloads files one at a time; your browser may ask permission for multiple downloads.</p></div>

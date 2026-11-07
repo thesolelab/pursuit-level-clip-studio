@@ -296,39 +296,30 @@ function reportExport(message, percent = null) {
     $('progressText').textContent = `${Math.round($('progress').value)}%`;
   } else $('progressText').textContent = 'Working…';
 }
-async function fileAsBlobURL(url, mime) {
-  const response = await fetch(url);
-  if (!response.ok) throw Error(`Couldn't load FFmpeg dependency (${response.status}).`);
-  return URL.createObjectURL(new Blob([await response.arrayBuffer()], {type: mime}));
+// Self-hosted FFmpeg files. Add the four files documented in README.md.
+// All paths are relative to the published GitHub Pages application.
+async function verifyEngineFile(path) {
+  const response = await fetch(path, { method: 'HEAD', cache: 'no-store' });
+  if (!response.ok) throw Error(`Required engine file missing: ${path} (HTTP ${response.status}). See README.md.`);
 }
 async function getFFmpeg() {
   if (ffmpegInstance) return ffmpegInstance;
-  reportExport('Loading FFmpeg processing engine…', 0);
-  const version = '0.12.10';
-  const library = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${version}/dist/umd`;
-  const core = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
-  if (!window.FFmpegWASM) {
-    await new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = `${library}/ffmpeg.js`;
-      script.onload = resolve;
-      script.onerror = () => reject(Error('FFmpeg library could not load from the CDN. Check the network or browser extensions.'));
-      document.head.append(script);
-    });
-  }
-  // The FFmpeg class worker must run on an origin-compatible Blob URL.
-  // Both core files must also use Blob URLs: importScripts() inside a worker
-  // cannot reliably import a cross-origin CDN script directly.
-  const temporaryURLs = [];
+  reportExport('Checking local FFmpeg files…', 0);
+  const root = new URL('./vendor/ffmpeg/', document.baseURI);
+  const url = filename => new URL(filename, root).href;
+  const paths = ['ffmpeg.js', '814.ffmpeg.js', 'ffmpeg-core.js', 'ffmpeg-core.wasm'];
   try {
-    reportExport('Downloading FFmpeg worker…', 1);
-    const classWorkerURL = await fileAsBlobURL(`${library}/814.ffmpeg.js`, 'text/javascript');
-    temporaryURLs.push(classWorkerURL);
-    reportExport('Downloading FFmpeg core (~30 MB)…', 2);
-    const coreURL = await fileAsBlobURL(`${core}/ffmpeg-core.js`, 'text/javascript');
-    temporaryURLs.push(coreURL);
-    const wasmURL = await fileAsBlobURL(`${core}/ffmpeg-core.wasm`, 'application/wasm');
-    temporaryURLs.push(wasmURL);
+    for (const filename of paths) await verifyEngineFile(url(filename));
+    if (!window.FFmpegWASM) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = url('ffmpeg.js');
+        script.onload = resolve;
+        script.onerror = () => reject(Error('Failed to load local ffmpeg.js'));
+        document.head.append(script);
+      });
+    }
+    reportExport('Initializing locally hosted FFmpeg…', 3);
     const engine = new window.FFmpegWASM.FFmpeg();
     engine.on('log', ({message}) => { lastFFmpegLog = message; });
     engine.on('progress', ({progress}) => {
@@ -336,14 +327,15 @@ async function getFFmpeg() {
         reportExport('Encoding MP4 locally…', 15 + 80 * progress);
       }
     });
-    reportExport('Initializing FFmpeg core…', 3);
-    await engine.load({ classWorkerURL, coreURL, wasmURL });
+    // Same-origin worker and core files. No CDN or Blob URL workaround.
+    await engine.load({
+      classWorkerURL: url('814.ffmpeg.js'),
+      coreURL: url('ffmpeg-core.js'),
+      wasmURL: url('ffmpeg-core.wasm')
+    });
     ffmpegInstance = engine;
-    // The worker may reference these Blob URLs for its lifetime.
-    window.__clipStudioEngineURLs = [...(window.__clipStudioEngineURLs || []), ...temporaryURLs];
     return engine;
   } catch (error) {
-    for (const url of temporaryURLs) URL.revokeObjectURL(url);
     throw Error(`FFmpeg engine initialization failed: ${error.message || String(error)}`);
   }
 }
