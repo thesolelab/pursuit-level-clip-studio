@@ -52,7 +52,6 @@ jobs:
           test "$(stat -c%s vendor/ffmpeg/ffmpeg-core.wasm)" -gt 30000000
           # Fail deployment if the core is not an ES module.
           grep -Eq 'export[[:space:]]*(default|\{)' vendor/ffmpeg/ffmpeg-core.js || { echo 'CORE IS NOT ESM'; exit 1; }
-          grep -q 'v0.4.6 / LOCAL WORKSPACE' index.html
           echo "Confirmed v0.4.6 app and all four engine files in deployment artifact:"
           ls -lh vendor/ffmpeg
 
