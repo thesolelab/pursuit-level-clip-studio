@@ -303,36 +303,44 @@ async function fileAsBlobURL(url, mime) {
 }
 async function getFFmpeg() {
   if (ffmpegInstance) return ffmpegInstance;
-  reportExport('Loading FFmpeg engine. An internet connection is required for the first load…', 0);
+  reportExport('Loading FFmpeg processing engine…', 0);
   const version = '0.12.10';
   const library = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${version}/dist/umd`;
   const core = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
   if (!window.FFmpegWASM) {
     await new Promise((resolve, reject) => {
-      const script = document.createElement('script'); script.src = `${library}/ffmpeg.js`;
-      script.onload = resolve; script.onerror = () => reject(Error('Cannot load FFmpeg library. Check network access or browser blocking.'));
+      const script = document.createElement('script');
+      script.src = `${library}/ffmpeg.js`;
+      script.onload = resolve;
+      script.onerror = () => reject(Error('FFmpeg library could not load from the CDN. Check the network or browser extensions.'));
       document.head.append(script);
     });
   }
-  const urls = [];
+  // FFmpeg's worker must be same-origin; a Blob URL makes it so on GitHub Pages.
+  // Core JS is passed as a real HTTPS URL to avoid the worker's failing import
+  // of an ephemeral Blob URL ("failed to import ffmpeg-core.js").
+  let workerURL;
   try {
-    const worker = await fileAsBlobURL(`${library}/814.ffmpeg.js`, 'text/javascript'); urls.push(worker);
-    const coreURL = await fileAsBlobURL(`${core}/ffmpeg-core.js`, 'text/javascript'); urls.push(coreURL);
-    const wasmURL = await fileAsBlobURL(`${core}/ffmpeg-core.wasm`, 'application/wasm'); urls.push(wasmURL);
+    workerURL = await fileAsBlobURL(`${library}/814.ffmpeg.js`, 'text/javascript');
     const engine = new window.FFmpegWASM.FFmpeg();
-    engine.on('log', ({message}) => {lastFFmpegLog = message;});
+    engine.on('log', ({message}) => { lastFFmpegLog = message; });
     engine.on('progress', ({progress}) => {
       if (busy && Number.isFinite(progress) && progress >= 0 && progress <= 1) {
         reportExport('Encoding MP4 locally…', 15 + 80 * progress);
       }
     });
-    await engine.load({classWorkerURL: worker, coreURL, wasmURL});
+    reportExport('Initializing FFmpeg core…', 3);
+    await engine.load({
+      classWorkerURL: workerURL,
+      coreURL: `${core}/ffmpeg-core.js`,
+      wasmURL: `${core}/ffmpeg-core.wasm`
+    });
     ffmpegInstance = engine;
+    window.__clipStudioEngineURLs = [...(window.__clipStudioEngineURLs || []), workerURL];
     return engine;
-  } finally {
-    // Blob URLs are no longer needed after FFmpeg loads. The engine holds the worker internally.
-    // Keep URLs alive for the worker's lifetime in case it lazily loads scripts.
-    window.__clipStudioEngineURLs = [...(window.__clipStudioEngineURLs || []), ...urls];
+  } catch (error) {
+    if (workerURL) URL.revokeObjectURL(workerURL);
+    throw Error(`FFmpeg engine initialization failed: ${error.message || String(error)}`);
   }
 }
 function even(number, max) {
@@ -393,7 +401,7 @@ async function exportClips(selected) {
     }
     reportExport(`Finished. Downloaded ${selected.length} MP4 clip${selected.length === 1 ? '' : 's'} to your device.`, 100);
   } catch (error) {
-    reportExport(`Export failed: ${error.message || String(error)}. Try a short H.264 MP4 in desktop Chrome.`, 0);
+    reportExport(`Export failed: ${error.message || String(error)}. See browser console for technical details.`, 0);
     console.error('Clip Studio export error', error);
   } finally {
     if (engine) try {await engine.deleteFile(inputName);} catch {}
