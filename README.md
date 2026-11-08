@@ -6,6 +6,8 @@ A local-browser video clip editor for Pursuit Level. Import MP4/MOV/WebM, previe
 
 ## Editing and projects
 
+Range timestamps and **Preview range** are directly below the source player. **Edit range** and preview bring the player into view; expand **Timeline and fine adjustments** when you need sliders or frame-step controls.
+
 - Use **Add new clip** to keep a new range. Use **Edit range** to load an existing clip.
 - Changes to a loaded clip are included automatically when you save the project or export. **Save loaded clip** also keeps that clip loaded for further editing or export.
 - **Save project** downloads JSON containing the saved clips and their settings, not the source video. Keep the original video on your device. A new range must be added as a clip before saving a project.

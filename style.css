@@ -835,3 +835,32 @@ progress {
 }
 .montage-grid :focus-visible { outline: 2px solid #ff6988; outline-offset: 2px; }
 @media (max-width: 500px) { .montage-grid { grid-template-columns: 1fr; } }
+
+/* Keep range editing beside playback; advanced tools stay out of the primary path. */
+.source-preview video {
+  max-height: min(40vh, 360px);
+  scroll-margin-top: 12px;
+}
+.editor-panel:has(#video[src]) .dropzone {
+  min-height: 0;
+  padding: 10px 12px;
+  margin-top: 14px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.editor-panel:has(#video[src]) .dropzone .drop-icon,
+.editor-panel:has(#video[src]) .dropzone small { display: none; }
+.editor-panel:has(#video[src]) .dropzone strong { font-size: 13px; }
+.range-editor { border-top: 1px solid var(--border); padding-top: 14px; }
+.range-heading h2 { font-size: 18px; }
+.range-heading .eyebrow { margin-bottom: 4px; }
+.range-heading #preview { flex-shrink: 0; border-color: #b94c75; }
+.range-editor .seek, .range-editor .actions { margin-top: 10px; }
+.range-editor .status { margin-top: 12px; }
+.range-editor #editStatus:empty { display: none; }
+.timeline-tools { margin: 18px 0; border: 1px solid #354052; border-radius: 8px; padding: 12px; }
+.timeline-tools > summary { cursor: pointer; color: #c9d2e0; font-size: 13px; font-weight: 700; }
+.timeline-tools > summary:focus-visible { outline: 2px solid #ff6988; outline-offset: 4px; }
+.timeline-tools .timeline { margin-bottom: 0; }
