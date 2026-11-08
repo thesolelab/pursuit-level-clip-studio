@@ -1,6 +1,6 @@
-import {autoMontage, montageSettings, montageClips, shuffleMontage} from './js/montage.js?v=0.6.3';
-import {encodeMontage} from './js/montage-export.js?v=0.6.3';
-import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=0.6.3';
+import {autoMontage, montageSettings, montageClips, shuffleMontage, MIN_MONTAGE_SECONDS, MAX_MONTAGE_SECONDS} from './js/montage.js?v=0.6.4';
+import {encodeMontage} from './js/montage-export.js?v=0.6.4';
+import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=0.6.4';
 import {cropRect as calculateCrop, videoFilter} from './js/export-settings.js';
 import {ZipWorker} from './js/zip-client.js';
 
@@ -421,7 +421,7 @@ function applyMontageSettings(raw) {
 function updateMontageSummary() {
   const total = clips.reduce((sum, clip) => sum + clip.end - clip.start, 0);
   $('montageSummary').textContent = clips.length
-    ? `${clips.length} saved segments · ${total.toFixed(1)} seconds combined. Montage export requires a total of 45–55 seconds.`
+    ? `${clips.length} saved segments · ${total.toFixed(1)} seconds combined. Montage export requires a total of ${MIN_MONTAGE_SECONDS}–${MAX_MONTAGE_SECONDS} seconds.`
     : 'Load a video, then generate segments. A 2-minute source can become a 50-second montage.';
 }
 $('generateMontage').addEventListener('click', () => {

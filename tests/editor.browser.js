@@ -225,10 +225,11 @@ test('cancellation during engine download promptly unlocks the workspace', async
   assert.equal(await page.locator('#openProject').isDisabled(), false);
 });
 
-async function generate(page) {
+async function generate(page, count = 6) {
+  await page.locator('#montageCount').fill(String(count));
   page.once('dialog', dialog => dialog.accept());
   await page.locator('#generateMontage').click();
-  await page.waitForFunction(() => document.querySelector('#count').textContent === '6 clips');
+  await page.waitForFunction(count => document.querySelector('#count').textContent === `${count} clips`, count);
 }
 
 test('auto montage generates six segments totaling 50 seconds and exports one muted vertical MP4', async t => {
@@ -276,7 +277,7 @@ test('short footage is rejected and out-of-range edited totals cannot export', a
   await page.locator('#end').fill(new Date(Math.round((startSeconds+.5)*1000)).toISOString().slice(11,23));
   await page.locator('#update').click();
   await page.locator('#exportMontage').click();
-  assert.match(await page.locator('#exportStatus').textContent(),/total.*45–55/);
+  assert.match(await page.locator('#exportStatus').textContent(),/total.*45–60/);
   assert.equal(await page.evaluate(()=>window.calls.length),0);
 });
 
@@ -401,4 +402,27 @@ test('range preview and timestamps stay beside the player on laptop and mobile l
   await page.locator('.timeline-tools summary').click();
   assert.equal(await page.locator('#frameBack').isVisible(),true);
   await page.locator('#frameBack').click();
+});
+
+test('news montage defaults to 15 clips and exports the 60-second upper boundary', async t => {
+  const page=await editor(t,true,longFixture);
+  assert.equal(await page.locator('#montageCount').inputValue(),'15');
+  assert.equal(await page.locator('#montageLength').getAttribute('max'),'60');
+  assert.equal(await page.locator('#montageCount').getAttribute('max'),'30');
+  await page.locator('#montageLength').fill('60');await generate(page,15);
+  assert.match(await page.locator('#montageSummary').textContent(),/15 saved segments.*60.0 seconds/);
+  const saving=page.waitForEvent('download');await page.locator('#saveProject').click();
+  const project=JSON.parse(await textDownload(await saving));
+  assert.equal(project.montage.count,15);assert.equal(project.montage.duration,60);
+  await openProject(page,project);
+  await page.waitForFunction(()=>document.querySelector('#montageCount').value==='15');
+  const downloading=page.waitForEvent('download');await page.locator('#exportMontage').click();await downloading;
+  const calls=await page.evaluate(()=>window.calls);
+  assert.equal(calls.length,16);assert.equal(calls.at(-1)[calls.at(-1).indexOf('-t')+1],'60.000');
+});
+test('30 clips can be generated and exported as one montage', async t => {
+  const page=await editor(t,true,longFixture);await generate(page,30);
+  assert.match(await page.locator('#montageSummary').textContent(),/30 saved segments.*50.0 seconds/);
+  const downloading=page.waitForEvent('download');await page.locator('#exportMontage').click();await downloading;
+  assert.equal(await page.evaluate(()=>window.calls.length),31);
 });
