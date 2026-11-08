@@ -9,6 +9,7 @@
     sans-serif;
   background: #090711;
   color: #eff3f8;
+  --workspace-width: 1800px;
   --accent: #64e8ce;
   --border: #283343;
   --muted: #97a6b8;
@@ -41,7 +42,7 @@ input {
 }
 .site-header {
   min-height: 92px;
-  padding: 18px max(24px, calc((100vw - 1220px) / 2));
+  padding: 18px max(24px, calc((100vw - var(--workspace-width)) / 2 + 22px));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -102,7 +103,7 @@ input {
   min-width: 0;
 }
 main {
-  max-width: 1220px;
+  max-width: var(--workspace-width);
   margin: 28px auto;
   padding: 0 22px;
   display: grid;
