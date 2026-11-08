@@ -1,15 +1,18 @@
 export const MIN_MONTAGE_SECONDS = 45;
-export const MAX_MONTAGE_SECONDS = 55;
+export const MAX_MONTAGE_SECONDS = 60;
+
+export const DEFAULT_MONTAGE_COUNT = 15;
+export const MAX_MONTAGE_COUNT = 30;
 
 export function montageSettings(raw = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Error('Invalid montage settings.');
   if (raw.mute !== undefined && typeof raw.mute !== 'boolean') throw Error('Choose mute or keep audio.');
   const duration = Number(raw.duration ?? 50);
-  const count = Number(raw.count ?? 6);
+  const count = Number(raw.count ?? DEFAULT_MONTAGE_COUNT);
   const format = raw.format ?? 'vertical';
   const quality = raw.quality ?? '720';
-  if (!Number.isFinite(duration) || duration < MIN_MONTAGE_SECONDS || duration > MAX_MONTAGE_SECONDS) throw Error('Choose a montage length from 45 to 55 seconds.');
-  if (!Number.isInteger(count) || count < 2 || count > 12) throw Error('Choose between 2 and 12 segments.');
+  if (!Number.isFinite(duration) || duration < MIN_MONTAGE_SECONDS || duration > MAX_MONTAGE_SECONDS) throw Error(`Choose a montage length from ${MIN_MONTAGE_SECONDS} to ${MAX_MONTAGE_SECONDS} seconds.`);
+  if (!Number.isInteger(count) || count < 2 || count > MAX_MONTAGE_COUNT) throw Error(`Choose between 2 and ${MAX_MONTAGE_COUNT} segments.`);
   if (!['vertical', 'landscape'].includes(format)) throw Error('Choose 9:16 or 16:9 framing.');
   if (!['720', '1080'].includes(quality)) throw Error('Choose 720p or 1080p montage resolution.');
   return {duration, count, format, quality, mute: raw.mute ?? true};
@@ -57,6 +60,6 @@ export function montageClips(clips, raw, sourceDuration) {
     return {...clip, crop: {...clip.crop}, end: Math.min(clip.end, sourceDuration), format: settings.format, quality: settings.quality, mute: settings.mute};
   });
   const total = result.reduce((sum, clip) => sum + clip.end - clip.start, 0);
-  if (total < MIN_MONTAGE_SECONDS - .001 || total > MAX_MONTAGE_SECONDS + .001) throw Error(`Saved segments total ${total.toFixed(1)} seconds. Adjust them to total 45–55 seconds, or generate a new montage.`);
+  if (total < MIN_MONTAGE_SECONDS - .001 || total > MAX_MONTAGE_SECONDS + .001) throw Error(`Saved segments total ${total.toFixed(1)} seconds. Adjust them to total ${MIN_MONTAGE_SECONDS}–${MAX_MONTAGE_SECONDS} seconds, or generate a new montage.`);
   return result;
 }

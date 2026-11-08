@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080b11">
   <title>Pursuit Level | Clip Studio</title>
-  <link rel="stylesheet" href="style.css?v=0.6.3-range-layout">
-  <script src="app.js?v=0.6.3-range-layout" type="module"></script>
+  <link rel="stylesheet" href="style.css?v=0.6.4">
+  <script src="app.js?v=0.6.4" type="module"></script>
 </head>
 <body>
   <header class="site-header">
@@ -14,7 +14,7 @@
       <img class="brand-logo" src="pursuit-level-logo.png" alt="Pursuit Level — six-star sunset logo" width="76" height="76">
       <div class="brand-title"><strong>CLIP STUDIO</strong><span>PURSUIT LEVEL / FOOTAGE WORKSPACE</span></div>
     </div>
-    <span class="version">v0.6.3 / LOCAL WORKSPACE</span>
+    <span class="version">v0.6.4 / LOCAL WORKSPACE</span>
   </header>
   <main>
     <section class="panel editor-panel" aria-labelledby="source-heading">
@@ -80,10 +80,10 @@
       <section class="project-section" aria-labelledby="project-heading"><h3 id="project-heading">Project file</h3><p class="muted">Save selections to a JSON project file. Reopen it later using the same original video. Video footage is never embedded in the project. Save before replacing work or leaving this page. Projects support up to 500 clips.</p><div class="actions"><button id="saveProject" type="button">Save project</button><button id="openProject" type="button">Open project</button><button id="chooseProjectSource" type="button" hidden>Choose project source video</button><button id="cancelProject" type="button" hidden>Cancel opening project</button><input id="projectFile" type="file" accept=".json,application/json" hidden></div></section>
       <section class="montage-section" aria-labelledby="montage-heading">
         <p class="eyebrow">AUTO MONTAGE</p><h3 id="montage-heading">One video. Several moments.</h3>
-        <p class="muted">Create a 45–55-second montage from different parts of your video. Each clip comes from its own time window, with skipped footage between clips. The playback order is shuffled, so the montage jumps forward and backward in source time. Generate again for new clips, or shuffle the current clips. This does not detect highlights.</p>
+        <p class="muted">Create a 45–60-second montage from different parts of your video. Each clip comes from its own time window, with skipped footage between clips. The playback order is shuffled, so the montage jumps forward and backward in source time. Generate again for new clips, or shuffle the current clips. This does not detect highlights.</p>
         <div class="montage-grid">
-          <label for="montageLength">Target length (seconds)<input id="montageLength" type="number" min="45" max="55" step="1" value="50"></label>
-          <label for="montageCount">Number of segments<input id="montageCount" type="number" min="2" max="12" step="1" value="6"></label>
+          <label for="montageLength">Target length (seconds)<input id="montageLength" type="number" min="45" max="60" step="1" value="50"></label>
+          <label for="montageCount">Number of segments<input id="montageCount" type="number" min="2" max="30" step="1" value="15"></label>
           <label for="montageFormat">Montage framing<select id="montageFormat"><option value="vertical">9:16 — Short</option><option value="landscape">16:9 — Widescreen</option></select></label>
           <label for="montageAudio">Montage audio<select id="montageAudio"><option value="mute">Muted (voiceover)</option><option value="keep">Keep original audio</option></select></label>
           <label for="montageQuality">Montage resolution<select id="montageQuality"><option value="720">720p — faster</option><option value="1080">1080p — higher detail</option></select></label>

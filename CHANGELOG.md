@@ -1,4 +1,7 @@
 Pursuit Level Clip Studio — Changelog
+v0.6.4 — News montage pacing
+- Default to 15 clips, allow 2–30 clips, and expand target/export duration to 45–60 seconds.
+- Preserve existing projects' saved clip counts and ranges, shuffled playback, framing, and audio choices.
 v0.6.3 — Shuffled montage playback
 - Shuffle generated clips so playback jumps backward and forward through source timestamps instead of following the source timeline.
 - Add Shuffle order to rearrange existing clips without changing their ranges or names. Preview, project saves, and MP4 export follow the displayed order.
