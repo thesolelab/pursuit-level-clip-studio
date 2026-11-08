@@ -1,4 +1,4 @@
-# Pursuit Level Clip Studio v0.6.2
+# Pursuit Level Clip Studio v0.6.3
 
 A local-browser video clip editor for Pursuit Level. Import MP4/MOV/WebM, preview and select multiple clips, edit 9:16/16:9/original framing, mute audio, export MP4 or batch ZIP, and save/reopen project JSON.
 
@@ -17,11 +17,11 @@ A local-browser video clip editor for Pursuit Level. Import MP4/MOV/WebM, previe
 
 1. Import your video (for example, two minutes of footage).
 2. Choose a target length from **45 to 55 seconds**, a segment count from **2 to 12**, **9:16 or 16:9**, **720p or 1080p**, and **Muted** or **Keep original audio**. Defaults are 50 seconds, six segments, 9:16, 720p, and muted audio.
-3. Select **Generate segments**. This picks one random clip from each separate source-time window, keeping chronological order and reserving gaps between clips. For a two-minute source with six clips, it picks one range from each 20-second window. Generate again for new picks; the result is multiple source moments joined together, not one continuous range. It asks before replacing existing selections. It does not analyze action, speech, or highlight quality; review the selections yourself.
-4. Use **Preview montage** to watch the sequence. Use each segment's **Edit range** to change timestamps or crop positioning, then save the clip. Preview cuts are approximate browser seeks.
+3. Select **Generate segments**. This picks one random clip from each separate source-time window, reserving gaps between source ranges and shuffling their playback order. For a two-minute source with six clips, it picks one range from each 20-second window. Generate again for new picks; the result is multiple source moments joined together, not one continuous range. It asks before replacing existing selections. It does not analyze action, speech, or highlight quality; review the selections yourself.
+4. Use **Shuffle order** to rearrange existing clips without picking new ranges. Use **Preview montage** to watch the sequence. Use each segment's **Edit range** to change timestamps or crop positioning, then save the clip. Preview cuts are approximate browser seeks.
 5. Select **Export montage MP4** to download **one combined video**. Add your voiceover afterward in CapCut or another editor.
 
-Montage export joins all saved selections in their listed order. It applies the montage's framing, audio, and resolution to every segment, keeping each segment's saved crop position. Normal individual/ZIP clip exports continue to use each clip's own settings. Retained audio follows the cuts; a source with no audio remains silent.
+Montage preview and export follow the displayed list order, including jumps backward and forward in source time. Project saves preserve that order. It applies the montage's framing, audio, and resolution to every segment, keeping each segment's saved crop position. Normal individual/ZIP clip exports continue to use each clip's own settings. Retained audio follows the cuts; a source with no audio remains silent.
 
 Changing the target length/count affects the next generation. Editing segment ranges affects the current montage: their combined length must remain between 45 and 55 seconds before export. The source must be longer than the target so footage can be skipped between clips. If there is no room for separated clips, choose a shorter montage, fewer segments, or a longer source; the tool does not repeat footage or pad it to reach the target.
 

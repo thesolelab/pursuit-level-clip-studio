@@ -22,7 +22,7 @@ export function autoMontage(sourceDuration, raw, random = Math.random) {
   const totalMs = Math.round(settings.duration * 1000);
   if (!Number.isFinite(sourceMs) || sourceMs < totalMs) throw Error(`Load a playable video at least ${settings.duration} seconds long, or choose a shorter montage length.`);
   const base = Math.floor(totalMs / settings.count), remainder = totalMs % settings.count;
-  return Array.from({length: settings.count}, (_, i) => {
+  const selected = Array.from({length: settings.count}, (_, i) => {
     const length = base + (i < remainder ? 1 : 0);
     const windowStart = Math.floor(i * sourceMs / settings.count);
     const windowEnd = Math.floor((i + 1) * sourceMs / settings.count);
@@ -33,6 +33,20 @@ export function autoMontage(sourceDuration, raw, random = Math.random) {
     return {name: `Montage ${String(i + 1).padStart(2, '0')}`, start: start / 1000, end: (start + length) / 1000,
       format: settings.format, quality: settings.quality, mute: settings.mute, crop: {x: 50, y: 50, zoom: 1}};
   });
+  return shuffleMontage(selected, random).map((clip, i) => ({...clip, name: `Montage ${String(i + 1).padStart(2, '0')}`}));
+}
+
+export function shuffleMontage(clips, random = Math.random) {
+  const result = [...clips];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  // Avoid accidentally returning source-timeline order after a random shuffle.
+  if (result.length > 1 && result.every((clip, i) => !i || clip.start >= result[i - 1].start)) {
+    result.push(result.shift());
+  }
+  return result;
 }
 
 export function montageClips(clips, raw, sourceDuration) {

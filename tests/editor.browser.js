@@ -352,12 +352,28 @@ test('the joined montage encodes separate ranges from all six source-time window
   const downloading=page.waitForEvent('download');await page.locator('#exportMontage').click();await downloading;
   const args=await page.evaluate(()=>window.calls.slice(0,6));
   assert.equal(args.length,6);
+  const starts=args.map(a=>Number(a[a.indexOf('-ss')+1]));
+  assert.ok(starts.some((start,i)=>i && start<starts[i-1]));
+  const ordered=[...args].sort((a,b)=>Number(a[a.indexOf('-ss')+1])-Number(b[b.indexOf('-ss')+1]));
   let previousEnd=-1;
-  for(let i=0;i<args.length;i++) {
-    const start=Number(args[i][args[i].indexOf('-ss')+1]);
-    const duration=Number(args[i][args[i].indexOf('-t')+1]);
+  for(let i=0;i<ordered.length;i++) {
+    const start=Number(ordered[i][ordered[i].indexOf('-ss')+1]);
+    const duration=Number(ordered[i][ordered[i].indexOf('-t')+1]);
     assert.ok(start>=i*20+.5 && start+duration<=(i+1)*20-.499);
     if(i) assert.ok(start-previousEnd>=.999);
     previousEnd=start+duration;
   }
+});
+
+test('shuffle order preserves ranges and project/export order includes backward jumps', async t => {
+  const page=await editor(t,true,longFixture);await generate(page);
+  const before=await page.locator('.clip-times').allTextContents();
+  await page.locator('#shuffleMontage').click();
+  const after=await page.locator('.clip-times').allTextContents();
+  assert.deepEqual([...after].sort(),[...before].sort());
+  const saving=page.waitForEvent('download');await page.locator('#saveProject').click();
+  const saved=JSON.parse(await textDownload(await saving));
+  assert.ok(saved.clips.some((c,i)=>i && c.start<saved.clips[i-1].start));
+  const downloading=page.waitForEvent('download');await page.locator('#exportMontage').click();await downloading;
+  assert.deepEqual(await page.evaluate(()=>window.calls.slice(0,6).map(a=>Number(a[a.indexOf('-ss')+1]))),saved.clips.map(c=>c.start));
 });

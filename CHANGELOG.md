@@ -1,4 +1,7 @@
 Pursuit Level Clip Studio — Changelog
+v0.6.3 — Shuffled montage playback
+- Shuffle generated clips so playback jumps backward and forward through source timestamps instead of following the source timeline.
+- Add Shuffle order to rearrange existing clips without changing their ranges or names. Preview, project saves, and MP4 export follow the displayed order.
 v0.6.2 — Clips from distinct source timestamps
 - Pick one random clip inside each separate source-time window, reserving gaps to prevent adjacent clips from becoming one continuous passage.
 - Reject sources with no room for separated clips, with an explanation to shorten the target or use longer footage.

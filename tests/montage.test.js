@@ -1,20 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {autoMontage, montageClips, montageSettings} from '../js/montage.js';
+import {autoMontage, montageClips, montageSettings, shuffleMontage} from '../js/montage.js';
 import {encodeMontage, montagePartArgs} from '../js/montage-export.js';
 import {safeProject} from '../js/project.js';
 
 test('two-minute footage produces a 50-second random montage without fixed endpoints', () => {
   let n = 0;
-  const clips = autoMontage(120, {}, () => [.8,.2,.6,.4,.9,.1][n++]);
+  const clips = autoMontage(120, {}, () => [.8,.2,.6,.4,.9,.1][(n++)%6]);
   assert.equal(clips.length, 6); assert.ok(clips[0].start > 0); assert.ok(clips.at(-1).end < 120);
   assert.ok(Math.abs(clips.reduce((n,c) => n+c.end-c.start,0)-50)<1e-8);
-  for (let i=1;i<clips.length;i++) assert.ok(clips[i].start>clips[i-1].end);
+  const ordered=[...clips].sort((a,b)=>a.start-b.start);
+  for (let i=1;i<ordered.length;i++) assert.ok(ordered[i].start>ordered[i-1].end);
   assert.ok(clips.every(c=>c.format==='vertical' && c.mute));
 });
 test('all supported lengths and segment counts stay in bounds without duplicated footage', () => {
   for (const duration of [45,50,55]) for (const count of [2,6,12]) for (const source of [duration + count,120.1234]) {
-    const clips = autoMontage(source,{duration,count,format:'landscape',mute:false});
+    const clips = autoMontage(source,{duration,count,format:'landscape',mute:false}).sort((a,b)=>a.start-b.start);
     assert.ok(Math.abs(clips.reduce((n,c)=>n+c.end-c.start,0)-duration)<1e-8);
     for (let i=0;i<clips.length;i++) {
       assert.ok(clips[i].end<=source && clips[i].end>clips[i].start);
@@ -66,10 +67,10 @@ test('new random draws yield different selections without changing duration or o
   const first = autoMontage(120, {}, () => .2);
   const second = autoMontage(120, {}, () => .8);
   assert.notDeepEqual(first, second);
-  assert.ok(first[0].start < second[0].start);
+  assert.ok(Math.min(...first.map(c=>c.start)) < Math.min(...second.map(c=>c.start)));
   for (const random of [() => 0, () => .999999999, Math.random]) {
     for (let n=0;n<100;n++) {
-      const clips=autoMontage(120.123,{duration:55,count:12},random);
+      const clips=autoMontage(120.123,{duration:55,count:12},random).sort((a,b)=>a.start-b.start);
       assert.ok(Math.abs(clips.reduce((sum,c)=>sum+c.end-c.start,0)-55)<1e-8);
       assert.ok(clips[0].start>=0 && clips.at(-1).end<=120.123);
       for(let i=1;i<clips.length;i++) assert.ok(clips[i].start>=clips[i-1].end);
@@ -82,7 +83,7 @@ test('a source without spare footage cannot silently produce a continuous passag
 test('every generated clip comes from a different source window with a visible gap', () => {
   for (const random of [()=>0,()=>.999999999,Math.random]) {
     for(let attempt=0;attempt<100;attempt++) {
-      const clips=autoMontage(120,{},random);
+      const clips=autoMontage(120,{},random).sort((a,b)=>a.start-b.start);
       for(let i=0;i<clips.length;i++) {
         assert.ok(clips[i].start>=i*20+.5);
         assert.ok(clips[i].end<=(i+1)*20-.5);
@@ -91,4 +92,19 @@ test('every generated clip comes from a different source window with a visible g
       assert.ok(Math.abs(clips.reduce((sum,c)=>sum+c.end-c.start,0)-50)<1e-8);
     }
   }
+});
+
+test('generated order includes backward jumps, even if the random shuffle would be identity', () => {
+  for(const count of [2,6,12]) for(const random of [()=>0,()=>.999999999,Math.random]) {
+    const clips=autoMontage(120,{count},random);
+    assert.ok(clips.some((c,i)=>i && c.start<clips[i-1].start));
+    assert.equal(new Set(clips.map(c=>c.start)).size,count);
+  }
+});
+test('shuffling reorders existing clips without changing or dropping their ranges and names', () => {
+  const original=[{id:1,name:'A',start:5,end:8},{id:2,name:'B',start:20,end:26},{id:3,name:'C',start:33,end:38}];
+  const result=shuffleMontage(original,()=>.999999999);
+  assert.deepEqual(original.map(c=>c.id),[1,2,3]);
+  assert.deepEqual(result.map(c=>c.id),[2,3,1]);
+  assert.deepEqual([...result].sort((a,b)=>a.id-b.id),original);
 });
