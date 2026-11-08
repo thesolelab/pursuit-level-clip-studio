@@ -7,7 +7,7 @@
     "Segoe UI",
     Arial,
     sans-serif;
-  background: #080b11;
+  background: #090711;
   color: #eff3f8;
   --accent: #64e8ce;
   --border: #283343;
@@ -19,7 +19,21 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(ellipse at 50% -30%, #182436 0%, #080b11 65%);
+  isolation: isolate;
+  background: #090711;
+}
+/* Static ambient lighting stays behind the workspace without tinting footage. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 8% 12%, rgba(255, 35, 125, 0.3), transparent 52%),
+    radial-gradient(ellipse at 96% 38%, rgba(139, 55, 255, 0.32), transparent 56%),
+    radial-gradient(ellipse at 28% 0%, rgba(255, 139, 63, 0.18), transparent 38%),
+    radial-gradient(ellipse at 40% 110%, rgba(213, 30, 119, 0.16), transparent 55%);
 }
 button,
 input {
@@ -33,7 +47,8 @@ input {
   justify-content: space-between;
   gap: 20px;
   border-bottom: 1px solid #263040;
-  background: rgba(8, 12, 18, 0.9);
+  background: linear-gradient(110deg, rgba(56, 23, 39, 0.96), rgba(20, 12, 35, 0.96) 65%);
+  box-shadow: 0 8px 40px rgba(223, 40, 115, 0.12);
 }
 .identity {
   display: flex;
@@ -76,9 +91,13 @@ input {
   color: #94a4b6;
 }
 .panel {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(180, 91, 179, 0.32);
   border-radius: 14px;
-  background: #111925;
+  background: #14111f;
+  box-shadow:
+    0 14px 44px rgba(4, 2, 12, 0.42),
+    0 0 28px rgba(168, 45, 143, 0.1),
+    inset 0 1px 0 rgba(255, 183, 216, 0.04);
   padding: 24px;
   min-width: 0;
 }
@@ -436,7 +455,7 @@ footer span {
   color: #a9b6c5;
 }
 .site-header {
-  border-bottom-color: #482133;
+  border-bottom-color: rgba(255, 101, 158, 0.32);
 }
 .eyebrow {
   color: #ff607c;
@@ -451,8 +470,16 @@ footer span {
 }
 button.primary {
   background: #ff315d;
-  border-color: #ff315d;
+  border-color: #ff557f;
   color: #fff;
+  box-shadow: 0 0 20px rgba(255, 49, 112, 0.24);
+}
+button.primary:hover:not(:disabled) {
+  background: #ff426e;
+  box-shadow: 0 0 26px rgba(255, 49, 112, 0.36);
+}
+button.primary:disabled {
+  box-shadow: none;
 }
 .dropzone:hover,
 .dropzone.drag-active,
@@ -476,7 +503,9 @@ input:focus-visible {
   border-left-color: #ff416b;
 }
 .clip-active {
-  border-color: #ff416b;
+  border-color: #ff628f;
+  background: #1b1225;
+  box-shadow: 0 0 18px rgba(239, 53, 145, 0.14);
 }
 footer span {
   color: #ff416b;
