@@ -816,3 +816,22 @@ progress {
     flex: 1;
   }
 }
+
+/* Auto montage controls share the existing dark workspace and neon accents. */
+.montage-section {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #684064;
+  border-radius: 10px;
+  background: #181222;
+}
+.montage-section h3 { margin: 0; font-size: 18px; }
+.montage-section p { line-height: 1.6; }
+.montage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.montage-grid label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: #c9d2e0; }
+.montage-grid input, .montage-grid select {
+  width: 100%; min-width: 0; padding: 10px; font: inherit;
+  background: #0a101c; color: #e9eff5; border: 1px solid #455266; border-radius: 8px;
+}
+.montage-grid :focus-visible { outline: 2px solid #ff6988; outline-offset: 2px; }
+@media (max-width: 500px) { .montage-grid { grid-template-columns: 1fr; } }

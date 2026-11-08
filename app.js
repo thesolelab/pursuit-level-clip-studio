@@ -1,4 +1,6 @@
-import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js';
+import {autoMontage, montageSettings, montageClips} from './js/montage.js?v=0.6.0';
+import {encodeMontage} from './js/montage-export.js?v=0.6.0';
+import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=0.6.0';
 import {cropRect as calculateCrop, videoFilter} from './js/export-settings.js';
 import {ZipWorker} from './js/zip-client.js';
 
@@ -72,6 +74,7 @@ let ffmpegInstance = null;
 let lastFFmpegLog = '';
 const formats = {vertical: '9:16 Shorts', landscape: '16:9 Widescreen', original: 'Original'};
 let previewEnd = null;
+let montagePlayback = null;
 let editingId = null;
 let nextId = 1;
 let dragDepth = 0;
@@ -206,6 +209,7 @@ function actionButton(label, handler, className = '') {
   return button;
 }
 function render() {
+  updateMontageSummary();
   $('count').textContent = `${clips.length} clip${clips.length === 1 ? '' : 's'}`;
   const area = $('clips');
   area.replaceChildren();
@@ -293,6 +297,7 @@ async function loadFile(file) {
     clips.length = 0; nextId = 1; editingId = null;
     editorDirty = projectDirty = false;
     projectTitle = project?.title || 'Pursuit Level Clips';
+    applyMontageSettings(project?.montage);
     if (restored) restored.forEach(clip => clips.push({...clip, id: nextId++}));
     $('filename').textContent = `${file.name} · ${(file.size / 1048576).toFixed(1)} MB`;
     $('format').value = 'vertical'; $('mute').checked = false; $('quality').value = '720';
@@ -344,12 +349,17 @@ video.addEventListener('loadedmetadata', () => {
   if (!Number.isFinite(video.duration)) return status('This file does not report a usable duration.');
   $('end').value = stamp(video.duration);
   updateFormat();
-  setupTimeline();
+  setupTimeline(); exportButtons();
   if (clips.length) { loadSelection(clips[0]); return; }
   status(`Video ready · ${stamp(video.duration)}. Select your clip range.`);
 });
 video.addEventListener('error', () => status('This video cannot be played by your browser. MOV and some MP4 codecs may be unsupported; try an H.264 MP4.'));
 video.addEventListener('timeupdate', () => {
+  if (montagePlayback) {
+    const current = montagePlayback;
+    if (!current.advancing && video.currentTime >= current.clips[current.index].end) nextMontageSegment();
+    return;
+  }
   if (previewEnd !== null && video.currentTime >= previewEnd) {
     video.pause(); previewEnd = null; status('Selection preview finished.');
   }
@@ -395,6 +405,100 @@ window.addEventListener('beforeunload', event => {
 });
 window.addEventListener('pagehide', event => { if (!event.persisted && sourceURL) URL.revokeObjectURL(sourceURL); });
 
+
+function readMontageSettings() {
+  return montageSettings({duration: Number($('montageLength').value), count: Number($('montageCount').value),
+    format: $('montageFormat').value, quality: $('montageQuality').value, mute: $('montageAudio').value === 'mute'});
+}
+function applyMontageSettings(raw) {
+  const settings = montageSettings(raw || {});
+  $('montageLength').value = settings.duration; $('montageCount').value = settings.count;
+  $('montageFormat').value = settings.format; $('montageQuality').value = settings.quality;
+  $('montageAudio').value = settings.mute ? 'mute' : 'keep';
+}
+function updateMontageSummary() {
+  const total = clips.reduce((sum, clip) => sum + clip.end - clip.start, 0);
+  $('montageSummary').textContent = clips.length
+    ? `${clips.length} saved segments · ${total.toFixed(1)} seconds combined. Montage export requires a total of 45–55 seconds.`
+    : 'Load a video, then generate segments. A 2-minute source can become a 50-second montage.';
+}
+$('generateMontage').addEventListener('click', () => {
+  if (busy || loading || !sourceFile) return;
+  try {
+    const planned = autoMontage(video.duration, readMontageSettings());
+    if ((clips.length || editorDirty) && !confirm('Replace the current saved selections with new montage segments? Save your project first to keep them.')) return;
+    stopMontagePreview(); previewEnd = null; video.pause();
+    clips.length = 0;
+    planned.forEach(clip => clips.push({...clip, id: nextId++}));
+    editorDirty = false; projectDirty = true;
+    loadSelection(clips[0]);
+    updateMontageSummary();
+    status(`Generated ${planned.length} evenly spaced segments. Edit any range or crop, then export one montage MP4.`);
+  } catch (error) {status(error.message);}
+});
+$('exportMontage').addEventListener('click', () => {
+  try { exportClips([...clips], false, readMontageSettings()); }
+  catch (error) {reportExport(error.message, 0);}
+});
+for (const id of ['montageLength', 'montageCount', 'montageFormat', 'montageAudio', 'montageQuality']) {
+  $(id).addEventListener('change', () => {
+    if (sourceFile) {projectDirty = true; updateEditNotice();}
+  });
+}
+function stopMontagePreview() {
+  const playback = montagePlayback;
+  if (!playback) return;
+  montagePlayback = null;
+  video.pause(); video.muted = playback.originalMuted;
+  $('format').value = playback.originalFormat;
+  applyCrop(playback.originalCrop); updateFormat();
+  $('previewMontage').textContent = 'Preview montage';
+}
+async function nextMontageSegment() {
+  const playback = montagePlayback;
+  if (!playback || playback.advancing) return;
+  playback.advancing = true; playback.index++;
+  if (playback.index >= playback.clips.length) {
+    stopMontagePreview(); status('Montage preview finished. Export to create one MP4.'); return;
+  }
+  const clip = playback.clips[playback.index];
+  $('format').value = clip.format; applyCrop(clip.crop); updateFormat();
+  video.currentTime = clip.start; video.muted = clip.mute;
+  try {
+    await video.play();
+    if (montagePlayback === playback) {
+      playback.advancing = false;
+      status(`Previewing montage segment ${playback.index + 1}/${playback.clips.length}. Playback cuts are approximate; export creates the joined video.`);
+    }
+  } catch (error) {
+    if (montagePlayback === playback) {stopMontagePreview(); status(error.message);}
+  }
+}
+$('previewMontage').addEventListener('click', () => {
+  if (montagePlayback) {stopMontagePreview(); status('Montage preview stopped.'); return;}
+  if (busy || loading) return;
+  try {
+    if (editorDirty && editingId === null) throw Error('Add your current range as a clip before previewing the montage.');
+    savePendingEdits();
+    const planned = montageClips(clips, readMontageSettings(), video.duration);
+    previewEnd = null; video.pause();
+    montagePlayback = {clips: planned, index: -1, advancing: false, originalMuted: video.muted,
+      originalFormat: $('format').value, originalCrop: {...crop}};
+    $('previewMontage').textContent = 'Stop montage preview';
+    nextMontageSegment();
+  } catch (error) {status(error.message);}
+});
+video.addEventListener('ended', () => {if (montagePlayback) nextMontageSegment();});
+video.addEventListener('pause', () => {
+  if (montagePlayback && !montagePlayback.advancing && !video.ended) stopMontagePreview();
+});
+// Any editing or source interaction stops the temporary playback preview first.
+for (const event of ['pointerdown', 'focusin', 'input', 'change', 'click']) {
+  document.querySelector('main').addEventListener(event, e => {
+    if (montagePlayback && e.target.id !== 'previewMontage' && e.target.matches('button,input,select,video')) stopMontagePreview();
+  }, true);
+}
+
 render();
 
 applyCrop(defaultCrop());
@@ -406,7 +510,7 @@ updateFormat();
 function currentProject() {
   if (!sourceFile || !Number.isFinite(video.duration)) throw Error('Load a video before saving a project.');
   return {
-    type: 'pursuit-level-clip-studio', schemaVersion: 1, title: projectTitle,
+    type: 'pursuit-level-clip-studio', schemaVersion: 1, title: projectTitle, montage: readMontageSettings(),
     source: {name: sourceFile.name, size: sourceFile.size, lastModified: sourceFile.lastModified, duration: video.duration},
     clips: clips.map(c => ({name:c.name, start:c.start, end:c.end, format:c.format, crop:{...c.crop}, mute:Boolean(c.mute), quality:c.quality || '720'}))
   };
@@ -417,6 +521,7 @@ function restoreProject(project) {
   clips.length = 0;
   restored.forEach(clip => clips.push({...clip, id: nextId++}));
   projectTitle = project.title;
+  applyMontageSettings(project.montage);
   editorDirty = projectDirty = false;
   setEdit(null);
   if (clips.length) loadSelection(clips[0]);
@@ -509,6 +614,8 @@ for (const id of ['format', 'quality', 'mute']) $(id).addEventListener('change',
 function exportButtons() {
   $('exportLoaded').disabled = busy || loading || editingId === null || !sourceFile;
   $('exportAll').disabled = busy || loading || !clips.length || !sourceFile;
+  $('generateMontage').disabled = busy || loading || !sourceFile || !Number.isFinite(video.duration);
+  $('previewMontage').disabled = $('exportMontage').disabled = busy || loading || !sourceFile || clips.length < 2;
 }
 function reportExport(message, percent = null) {
   $('exportStatus').textContent = message;
@@ -553,7 +660,7 @@ async function getFFmpeg() {
     engine.on('log', ({message}) => { lastFFmpegLog = message; });
     engine.on('progress', ({progress}) => {
       if (busy && exportProgress && Number.isFinite(progress) && progress >= 0 && progress <= 1) {
-        reportExport(`Encoding ${exportProgress.index + 1}/${exportProgress.total} locally…`, 10 + 85 * (exportProgress.index + progress) / exportProgress.total);
+        reportExport(exportProgress.label || `Encoding ${exportProgress.index + 1}/${exportProgress.total} locally…`, 10 + 85 * (exportProgress.index + progress) / exportProgress.total);
       }
     });
     // The module worker requires the ESM core build. The GitHub workflow publishes it locally.
@@ -600,19 +707,24 @@ async function attachSource(engine, file) {
     return {inputName, cleanup: () => engine.deleteFile(inputName)};
   }
 }
-async function exportClips(selected, forceZip = false) {
+async function exportClips(selected, forceZip = false, montage = null) {
   if (busy || loading) return;
   if (!sourceFile || !video.videoWidth) return reportExport('Load a playable video first.', 0);
   if (!selected.length) return reportExport('Save at least one clip first.', 0);
-  try { savePendingEdits(); }
+  stopMontagePreview();
+  try {
+    if (montage && editorDirty && editingId === null) throw Error('Add your current range as a clip before exporting the montage.');
+    savePendingEdits();
+    if (montage) selected = montageClips(selected, montage, video.duration);
+  }
   catch (error) { return reportExport(error.message, 0); }
   if (sourceFile.size > 450 * 1048576 && !confirm('This source file is over 450 MB. Browser-based encoding may run out of memory or crash. Continue?')) return;
   // Capture everything before the first await; exports never observe later edits.
   const job = {clips: snapshotClips(selected), file: sourceFile, width: video.videoWidth, height: video.videoHeight};
   busy = true; cancelRequested = false; exportAbort = new AbortController();
-  exportProgress = {index: 0, total: job.clips.length, percent: 0};
+  exportProgress = {index: 0, total: job.clips.length + (montage ? 1 : 0), percent: 0};
   lockWorkspace(true); exportButtons();
-  const isBatch = forceZip || job.clips.length > 1;
+  const isBatch = !montage && (forceZip || job.clips.length > 1);
   let source = null;
   let engine = null;
   try {
@@ -620,6 +732,19 @@ async function exportClips(selected, forceZip = false) {
     if (cancelRequested) throw Error('Export cancelled.');
     source = await attachSource(engine, job.file);
     if (cancelRequested) throw Error('Export cancelled.');
+    if (montage) {
+      const result = await encodeMontage(engine, source.inputName, job.clips, {
+        width: job.width, height: job.height, signal: exportAbort.signal,
+        onStep: (index, label) => {
+          exportProgress.index = index; exportProgress.label = label;
+          reportExport(label, 10 + 85 * index / exportProgress.total);
+        }
+      });
+      if (cancelRequested) throw Error('Export cancelled.');
+      downloadBlob(new Blob([result], {type:'video/mp4'}), `${safeFilename(job.file.name.replace(/\.[^.]+$/, ''))}-montage.mp4`);
+      reportExport('Montage MP4 downloaded. Ready for your voiceover.', 100);
+      return;
+    }
     if (isBatch) activeZip = new ZipWorker();
     for (let i = 0; i < job.clips.length; i++) {
       if (cancelRequested) throw Error('Export cancelled.');

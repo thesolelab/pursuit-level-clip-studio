@@ -1,4 +1,14 @@
 Pursuit Level Clip Studio — Changelog
+v0.6.0 — Auto Montage
+- Generate 2–12 evenly spaced source segments for a 45–55-second montage; default to six segments totaling 50 seconds.
+- Preview the sequence, adjust saved ranges/crops, and export one joined MP4 in 9:16 or 16:9 at 720p or 1080p.
+- Choose muted output for later voiceover or keep the original audio across cuts.
+- Preserve montage settings in project JSON while retaining compatibility with older projects.
+- Reuse export snapshots, input mounting, progress, cancellation, and workspace locking. Keep existing individual/ZIP exports and branding.
+Known limitations
+- Segment selection spreads footage across the source; it does not detect semantic highlights.
+- Preview seeking is approximate. Exports use hard cuts and 30 fps; packet timing can slightly affect final duration.
+- Voiceover is added afterward in another editor. Large sources and batches remain subject to browser memory limits.
 v0.5.1 — Project safety and export reliability
 - Validate replacement footage and project bounds before clearing current work; warn about unsaved changes.
 - Include pending loaded-clip edits in project saves and exports, and apply one consistent 500-clip limit.

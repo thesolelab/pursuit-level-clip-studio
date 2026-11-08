@@ -1,4 +1,4 @@
-# Pursuit Level Clip Studio v0.5.1
+# Pursuit Level Clip Studio v0.6.0
 
 A local-browser video clip editor for Pursuit Level. Import MP4/MOV/WebM, preview and select multiple clips, edit 9:16/16:9/original framing, mute audio, export MP4 or batch ZIP, and save/reopen project JSON.
 
@@ -12,6 +12,20 @@ A local-browser video clip editor for Pursuit Level. Import MP4/MOV/WebM, previe
 - **Open project** restores directly if the matching video is already loaded. Otherwise, choose **Choose project source video** and select the original video. Matching checks use name, file size, duration, and clip bounds.
 - Replacement videos are checked before current work is cleared. Unsaved work triggers a confirmation before replacement or leaving the page. These warnings are not automatic backups and browsers may suppress exit warnings.
 - Projects support at most 500 clips and imports are limited to 1 MiB of JSON.
+
+## Auto Montage
+
+1. Import your video (for example, two minutes of footage).
+2. Choose a target length from **45 to 55 seconds**, a segment count from **2 to 12**, **9:16 or 16:9**, **720p or 1080p**, and **Muted** or **Keep original audio**. Defaults are 50 seconds, six segments, 9:16, 720p, and muted audio.
+3. Select **Generate segments**. This picks non-overlapping, evenly spaced ranges across the source. It asks before replacing existing selections. It does not analyze action, speech, or highlight quality; review the selections yourself.
+4. Use **Preview montage** to watch the sequence. Use each segment's **Edit range** to change timestamps or crop positioning, then save the clip. Preview cuts are approximate browser seeks.
+5. Select **Export montage MP4** to download **one combined video**. Add your voiceover afterward in CapCut or another editor.
+
+Montage export joins all saved selections in their listed order. It applies the montage's framing, audio, and resolution to every segment, keeping each segment's saved crop position. Normal individual/ZIP clip exports continue to use each clip's own settings. Retained audio follows the cuts; a source with no audio remains silent.
+
+Changing the target length/count affects the next generation. Editing segment ranges affects the current montage: their combined length must remain between 45 and 55 seconds before export. A source must be at least as long as the selected target; the tool does not repeat footage or pad it to reach the target.
+
+Project JSON now includes montage choices as well as the saved selections. Older projects still open with the default montage choices. Montage exports normalize frame rate to 30 fps, join encoded segments with hard cuts, and may differ by a small fraction of a second due to video/audio packet timing. There are no transitions, voiceover recording, or automatic subject tracking in this release.
 
 ## Exports and performance
 
@@ -28,10 +42,11 @@ A local-browser video clip editor for Pursuit Level. Import MP4/MOV/WebM, previe
 - `app.js`: editor events, playback, source loading, and export coordination.
 - `js/project.js`: project validation and independent export snapshots.
 - `js/export-settings.js`: crop geometry and FFmpeg filters.
+- `js/montage.js`, `js/montage-export.js`: automatic segment planning, montage validation, and joined MP4 exports.
 - `js/zip.js`, `js/zip-worker.js`, `js/zip-client.js`: incremental ZIP writer and worker messaging.
 - `style.css`: responsive styles. The existing logo assets are unchanged.
 - `scripts/prepare-engine.sh`: pinned self-hosted FFmpeg assets for local development and deployment.
-- `tests/`: regression tests and a synthetic two-second WebM blue video with a test tone. It contains no user footage.
+- `tests/`: regression tests and a synthetic WebM fixtures (a two-second blue video with a test tone and a silent two-minute blue video). It contains no user footage.
 
 ## Local development
 
