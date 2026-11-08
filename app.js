@@ -199,6 +199,7 @@ function loadSelection(clip) {
   updateTimelineHandles();
   setEdit(clip.id);
   status(`Editing ${clip.name}. Adjust timestamps and select Save loaded clip.`);
+  return true;
 }
 function actionButton(label, handler, className = '') {
   const button = document.createElement('button');
@@ -235,7 +236,7 @@ function render() {
     const detail = document.createElement('p'); detail.className = 'clip-times'; detail.textContent = `${stamp(clip.start)} → ${stamp(clip.end)} · ${formats[clip.format || 'vertical']} · ${clip.quality || '720'}${(clip.quality || '720') === 'source' ? '' : 'p'} · ${clip.mute ? 'Muted' : 'Audio on'}`;
     const actions = document.createElement('div'); actions.className = 'clip-actions';
     actions.append(
-      actionButton('Edit range', () => loadSelection(clip)),
+      actionButton('Edit range', () => {if (loadSelection(clip)) video.scrollIntoView({block: 'start'});}),
       actionButton('Export MP4', () => exportClips([clip])),
       actionButton('Jump to', () => { previewEnd = null; video.pause(); video.currentTime = clip.start; status(`Playhead moved to ${clip.name}.`); }),
       actionButton('Delete', () => {
@@ -378,6 +379,7 @@ $('preview').addEventListener('click', async () => {
     previewEnd = end;
     video.pause(); video.currentTime = start;
     await video.play();
+    video.scrollIntoView({block: 'start'});
     status('Previewing selected range…');
   } catch(error) { previewEnd = null; status(error.message); }
 });

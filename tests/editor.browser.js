@@ -377,3 +377,28 @@ test('shuffle order preserves ranges and project/export order includes backward 
   const downloading=page.waitForEvent('download');await page.locator('#exportMontage').click();await downloading;
   assert.deepEqual(await page.evaluate(()=>window.calls.slice(0,6).map(a=>Number(a[a.indexOf('-ss')+1]))),saved.clips.map(c=>c.start));
 });
+
+test('range preview and timestamps stay beside the player on laptop and mobile layouts', async t => {
+  const page=await editor(t);
+  for(const viewport of [{width:1366,height:768},{width:390,height:844}]) {
+    await page.setViewportSize(viewport);
+    await page.getByRole('button',{name:'Edit range',exact:true}).click();
+    await page.locator('#preview').click();
+    await page.waitForFunction(()=>!document.querySelector('#video').paused);
+    const layout=await page.evaluate(()=>{
+      const box=id=>{const r=document.getElementById(id).getBoundingClientRect();return {top:r.top,bottom:r.bottom};};
+      return {video:box('video'),preview:box('preview'),end:box('end'),crop:document.querySelector('.crop-section').getBoundingClientRect().top,
+        range:box('rangeEditor'),height:innerHeight,width:innerWidth,scrollWidth:document.documentElement.scrollWidth};
+    });
+    assert.ok(layout.video.top>=0 && layout.video.bottom<=layout.height);
+    assert.ok(layout.preview.top>=layout.video.bottom && layout.preview.bottom<=layout.height);
+    assert.ok(layout.end.bottom<=layout.height);
+    assert.ok(layout.range.bottom<layout.crop);
+    assert.equal(layout.width,layout.scrollWidth);
+    await page.locator('#video').evaluate(v=>v.pause());
+  }
+  assert.equal(await page.locator('.timeline-tools').getAttribute('open'),null);
+  await page.locator('.timeline-tools summary').click();
+  assert.equal(await page.locator('#frameBack').isVisible(),true);
+  await page.locator('#frameBack').click();
+});
