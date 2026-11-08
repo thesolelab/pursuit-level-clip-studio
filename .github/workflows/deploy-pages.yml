@@ -29,33 +29,21 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Check application
+        run: |
+          npm ci
+          npm run check
+          npm test
+
       - name: Create deployment files and install FFmpeg
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p publish/vendor/ffmpeg
           cp index.html app.js style.css pursuit-level-logo.png publish/
-          cd publish
-
-          npm pack @ffmpeg/ffmpeg@0.12.10 --pack-destination /tmp --silent
-          npm pack @ffmpeg/core@0.12.10 --pack-destination /tmp --silent
-          mkdir -p /tmp/clip-ffmpeg /tmp/clip-core
-          tar -xzf /tmp/ffmpeg-ffmpeg-0.12.10.tgz -C /tmp/clip-ffmpeg
-          tar -xzf /tmp/ffmpeg-core-0.12.10.tgz -C /tmp/clip-core
-
-          cp /tmp/clip-ffmpeg/package/dist/umd/ffmpeg.js vendor/ffmpeg/
-          cp /tmp/clip-ffmpeg/package/dist/umd/814.ffmpeg.js vendor/ffmpeg/
-          cp /tmp/clip-core/package/dist/esm/ffmpeg-core.js vendor/ffmpeg/
-          cp /tmp/clip-core/package/dist/esm/ffmpeg-core.wasm vendor/ffmpeg/
-          touch .nojekyll
-
-          for file in ffmpeg.js 814.ffmpeg.js ffmpeg-core.js ffmpeg-core.wasm; do
-            test -s "vendor/ffmpeg/$file" || { echo "MISSING: $file"; exit 1; }
-          done
-          test "$(stat -c%s vendor/ffmpeg/ffmpeg-core.wasm)" -gt 30000000
-          grep -Eq 'export[[:space:]]*(default|\{)' vendor/ffmpeg/ffmpeg-core.js || { echo 'CORE IS NOT ESM'; exit 1; }
-          echo "Confirmed Clip Studio app and all four FFmpeg engine files in deployment artifact:"
-          ls -lh vendor/ffmpeg
+          cp -R js publish/
+          bash scripts/prepare-engine.sh publish/vendor/ffmpeg
+          touch publish/.nojekyll
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
