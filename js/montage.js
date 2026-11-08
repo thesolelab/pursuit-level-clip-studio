@@ -15,22 +15,21 @@ export function montageSettings(raw = {}) {
   return {duration, count, format, quality, mute: raw.mute ?? true};
 }
 
-// Randomize the unused gaps, keeping source order and preventing overlapping footage.
+// Pick one random range within each distinct source-time window, with gaps on both sides.
 export function autoMontage(sourceDuration, raw, random = Math.random) {
   const settings = montageSettings(raw);
   const sourceMs = Math.floor(sourceDuration * 1000);
   const totalMs = Math.round(settings.duration * 1000);
   if (!Number.isFinite(sourceMs) || sourceMs < totalMs) throw Error(`Load a playable video at least ${settings.duration} seconds long, or choose a shorter montage length.`);
   const base = Math.floor(totalMs / settings.count), remainder = totalMs % settings.count;
-  const slack = sourceMs - totalMs;
-  // Sorted random offsets divide the unused time among the leading, internal and trailing gaps.
-  // With no spare footage the only valid selection uses the entire source.
-  const offsets = Array.from({length: settings.count}, () => Math.floor(random() * (slack + 1))).sort((a, b) => a - b);
-  let used = 0;
   return Array.from({length: settings.count}, (_, i) => {
     const length = base + (i < remainder ? 1 : 0);
-    const start = used + offsets[i];
-    used += length;
+    const windowStart = Math.floor(i * sourceMs / settings.count);
+    const windowEnd = Math.floor((i + 1) * sourceMs / settings.count);
+    const spare = windowEnd - windowStart - length;
+    const margin = Math.min(500, Math.floor(spare / 2));
+    if (margin < 1) throw Error('The source needs extra footage between montage clips. Choose a shorter montage, fewer segments, or a longer source.');
+    const start = windowStart + margin + Math.floor(random() * (spare - 2 * margin + 1));
     return {name: `Montage ${String(i + 1).padStart(2, '0')}`, start: start / 1000, end: (start + length) / 1000,
       format: settings.format, quality: settings.quality, mute: settings.mute, crop: {x: 50, y: 50, zoom: 1}};
   });

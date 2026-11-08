@@ -13,7 +13,7 @@ test('two-minute footage produces a 50-second random montage without fixed endpo
   assert.ok(clips.every(c=>c.format==='vertical' && c.mute));
 });
 test('all supported lengths and segment counts stay in bounds without duplicated footage', () => {
-  for (const duration of [45,50,55]) for (const count of [2,6,12]) for (const source of [duration,120.1234]) {
+  for (const duration of [45,50,55]) for (const count of [2,6,12]) for (const source of [duration + count,120.1234]) {
     const clips = autoMontage(source,{duration,count,format:'landscape',mute:false});
     assert.ok(Math.abs(clips.reduce((n,c)=>n+c.end-c.start,0)-duration)<1e-8);
     for (let i=0;i<clips.length;i++) {
@@ -66,7 +66,7 @@ test('new random draws yield different selections without changing duration or o
   const first = autoMontage(120, {}, () => .2);
   const second = autoMontage(120, {}, () => .8);
   assert.notDeepEqual(first, second);
-  assert.equal(first[0].start,14); assert.equal(second[0].start,56);
+  assert.ok(first[0].start < second[0].start);
   for (const random of [() => 0, () => .999999999, Math.random]) {
     for (let n=0;n<100;n++) {
       const clips=autoMontage(120.123,{duration:55,count:12},random);
@@ -76,8 +76,19 @@ test('new random draws yield different selections without changing duration or o
     }
   }
 });
-test('a source exactly the target length remains fully covered', () => {
-  const clips=autoMontage(50,{},()=>.8);
-  assert.equal(clips[0].start,0); assert.equal(clips.at(-1).end,50);
-  for(let i=1;i<clips.length;i++) assert.equal(clips[i].start,clips[i-1].end);
+test('a source without spare footage cannot silently produce a continuous passage', () => {
+  assert.throws(()=>autoMontage(50,{},()=>.8),/extra footage/);
+});
+test('every generated clip comes from a different source window with a visible gap', () => {
+  for (const random of [()=>0,()=>.999999999,Math.random]) {
+    for(let attempt=0;attempt<100;attempt++) {
+      const clips=autoMontage(120,{},random);
+      for(let i=0;i<clips.length;i++) {
+        assert.ok(clips[i].start>=i*20+.5);
+        assert.ok(clips[i].end<=(i+1)*20-.5);
+        if(i) assert.ok(clips[i].start-clips[i-1].end>=.999);
+      }
+      assert.ok(Math.abs(clips.reduce((sum,c)=>sum+c.end-c.start,0)-50)<1e-8);
+    }
+  }
 });

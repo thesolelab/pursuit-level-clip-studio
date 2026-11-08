@@ -345,3 +345,19 @@ test('regenerating montage draws fresh random ranges instead of anchoring the fi
   assert.notDeepEqual(await page.locator('.clip-times').allTextContents(),first);
   assert.match(await page.locator('#montageSummary').textContent(),/50.0 seconds/);
 });
+
+
+test('the joined montage encodes separate ranges from all six source-time windows', async t => {
+  const page=await editor(t,true,longFixture);await generate(page);
+  const downloading=page.waitForEvent('download');await page.locator('#exportMontage').click();await downloading;
+  const args=await page.evaluate(()=>window.calls.slice(0,6));
+  assert.equal(args.length,6);
+  let previousEnd=-1;
+  for(let i=0;i<args.length;i++) {
+    const start=Number(args[i][args[i].indexOf('-ss')+1]);
+    const duration=Number(args[i][args[i].indexOf('-t')+1]);
+    assert.ok(start>=i*20+.5 && start+duration<=(i+1)*20-.499);
+    if(i) assert.ok(start-previousEnd>=.999);
+    previousEnd=start+duration;
+  }
+});
