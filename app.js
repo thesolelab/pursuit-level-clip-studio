@@ -1,6 +1,6 @@
-import {autoMontage, montageSettings, montageClips} from './js/montage.js?v=0.6.1';
-import {encodeMontage} from './js/montage-export.js?v=0.6.1';
-import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=0.6.1';
+import {autoMontage, montageSettings, montageClips, shuffleMontage} from './js/montage.js?v=0.6.3';
+import {encodeMontage} from './js/montage-export.js?v=0.6.3';
+import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=0.6.3';
 import {cropRect as calculateCrop, videoFilter} from './js/export-settings.js';
 import {ZipWorker} from './js/zip-client.js';
 
@@ -433,7 +433,20 @@ $('generateMontage').addEventListener('click', () => {
     editorDirty = false; projectDirty = true;
     loadSelection(clips[0]);
     updateMontageSummary();
-    status(`Generated ${planned.length} randomly selected segments. Edit any range or crop, then export one montage MP4.`);
+    status(`Generated ${planned.length} clips from separate timestamps in shuffled playback order. Review the order below, then use Export montage MP4 to join all clips.`);
+  } catch (error) {status(error.message);}
+});
+$('shuffleMontage').addEventListener('click', () => {
+  if (busy || loading || clips.length < 2) return;
+  try {
+    stopMontagePreview();
+    if (editorDirty && editingId === null) throw Error('Add your current range as a clip before shuffling.');
+    savePendingEdits();
+    const reordered = shuffleMontage(clips);
+    clips.splice(0, clips.length, ...reordered);
+    projectDirty = true;
+    loadSelection(clips[0]);
+    status('Shuffled playback order. Preview and export follow the list below.');
   } catch (error) {status(error.message);}
 });
 $('exportMontage').addEventListener('click', () => {
@@ -615,7 +628,7 @@ function exportButtons() {
   $('exportLoaded').disabled = busy || loading || editingId === null || !sourceFile;
   $('exportAll').disabled = busy || loading || !clips.length || !sourceFile;
   $('generateMontage').disabled = busy || loading || !sourceFile || !Number.isFinite(video.duration);
-  $('previewMontage').disabled = $('exportMontage').disabled = busy || loading || !sourceFile || clips.length < 2;
+  $('shuffleMontage').disabled = $('previewMontage').disabled = $('exportMontage').disabled = busy || loading || !sourceFile || clips.length < 2;
 }
 function reportExport(message, percent = null) {
   $('exportStatus').textContent = message;
