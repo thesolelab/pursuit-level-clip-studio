@@ -1,11 +1,11 @@
 {
   "name": "pursuit-level-clip-studio",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
     "prepare-engine": "bash scripts/prepare-engine.sh",
-    "check": "node --check app.js && node --check js/project.js && node --check js/export-settings.js && node --check js/zip.js && node --check js/zip-client.js && node --check js/zip-worker.js",
+    "check": "node --check app.js && node --check js/montage.js && node --check js/montage-export.js && node --check js/project.js && node --check js/export-settings.js && node --check js/zip.js && node --check js/zip-client.js && node --check js/zip-worker.js",
     "test": "node --test tests/*.test.js",
     "test:browser": "node --test --test-timeout=20000 tests/*.browser.js"
   },

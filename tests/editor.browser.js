@@ -6,6 +6,7 @@ import {chromium} from 'playwright';
 
 const root = new URL('../', import.meta.url);
 const fixture = await readFile(new URL('./fixtures/sample.webm', import.meta.url));
+const longFixture = await readFile(new URL('./fixtures/two-minutes.webm', import.meta.url));
 let browser, server, origin;
 before(async () => {
   server = createServer(async (req, res) => {
@@ -24,7 +25,7 @@ before(async () => {
 });
 after(async () => {await browser?.close(); if (server) await new Promise(resolve => server.close(resolve));});
 
-async function editor(t, fakeEngine = false) {
+async function editor(t, fakeEngine = false, source = fixture) {
   const context = await browser.newContext({acceptDownloads: true});
   t.after(() => context.close());
   const page = await context.newPage();
@@ -34,7 +35,7 @@ async function editor(t, fakeEngine = false) {
   if (fakeEngine) {
     await page.route('**/vendor/ffmpeg/*', route => route.fulfill({status: 200, body: ''}));
     await page.addInitScript(() => {
-      window.calls = []; window.writes = []; window.mounts = 0; window.engines = 0;
+      window.calls = []; window.writes = []; window.writeContents = {}; window.mounts = 0; window.engines = 0;
       window.FFmpegWASM = {FFmpeg: class {
         constructor() {window.engines++; this.handlers = {};}
         on(event, handler) {this.handlers[event] = handler;}
@@ -43,11 +44,11 @@ async function editor(t, fakeEngine = false) {
         async deleteDir() {}
         async mount() {window.mounts++; if (window.noMount) throw Error('unsupported'); return true;}
         async unmount() {}
-        async writeFile(name) {window.writes.push(name);}
+        async writeFile(name, bytes) {window.writes.push(name); if (name.endsWith('.txt')) window.writeContents[name] = new TextDecoder().decode(bytes);}
         async deleteFile() {}
         async exec(args) {
           window.calls.push(args);
-          if (window.holdExport) await new Promise((resolve, reject) => {window.releaseExport = resolve; this.reject = reject;});
+          if (window.holdExport || (window.holdJoin && args.includes('concat'))) await new Promise((resolve, reject) => {window.releaseExport = resolve; this.reject = reject;});
           for (const progress of [.8, .1, 1]) this.handlers.progress?.({progress});
           return 0;
         }
@@ -57,7 +58,7 @@ async function editor(t, fakeEngine = false) {
     });
   }
   await page.goto(origin);
-  await page.locator('#file').setInputFiles({name: 'sample.webm', mimeType: 'video/webm', buffer: fixture});
+  await page.locator('#file').setInputFiles({name: 'sample.webm', mimeType: 'video/webm', buffer: source});
   await page.waitForFunction(() => document.querySelector('#video').videoWidth > 0 && document.querySelector('main').getAttribute('aria-busy') === 'false', null, {timeout:10000});
   await page.locator('#end').fill('00:00:01.000');
   await page.locator('#add').click();
@@ -222,4 +223,109 @@ test('cancellation during engine download promptly unlocks the workspace', async
   await page.waitForFunction(() => document.querySelector('#cancelExport').hidden, null, {timeout:2000});
   assert.match(await page.locator('#exportStatus').textContent(), /Export cancelled/);
   assert.equal(await page.locator('#openProject').isDisabled(), false);
+});
+
+async function generate(page) {
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('#generateMontage').click();
+  await page.waitForFunction(() => document.querySelector('#count').textContent === '6 clips');
+}
+
+test('auto montage generates six segments totaling 50 seconds and exports one muted vertical MP4', async t => {
+  const page = await editor(t, true, longFixture);
+  await generate(page);
+  assert.match(await page.locator('#montageSummary').textContent(), /50.0 seconds/);
+  assert.equal(await page.locator('#start').inputValue(),'00:00:00.000');
+  await page.evaluate(()=>{window.holdExport = true;});
+  let downloads=0;page.on('download',()=>downloads++);
+  const downloading=page.waitForEvent('download');
+  await page.locator('#exportMontage').click();
+  await page.waitForFunction(()=>window.calls.length===1);
+  assert.equal(await page.locator('#montageFormat').isDisabled(),true);
+  await page.evaluate(()=>{window.holdExport=false;window.releaseExport();});
+  const download=await downloading;
+  assert.match(download.suggestedFilename(),/-montage.mp4$/);
+  await page.waitForFunction(()=>document.querySelector('#cancelExport').hidden);
+  const result=await page.evaluate(()=>({calls:window.calls,list:window.writeContents['montage_list.txt']}));
+  assert.equal(result.calls.length,7);assert.equal(downloads,1);
+  for(const args of result.calls.slice(0,6)) {assert.ok(args.includes('-an'));assert.match(args[args.indexOf('-vf')+1],/scale=720:1280/);}
+  assert.match(result.list,/montage_part_0.mp4/);assert.match(result.list,/montage_part_5.mp4/);
+  assert.ok(result.calls.at(-1).includes('concat'));
+  assert.equal(await page.locator('#progress').getAttribute('value'),'100');
+});
+
+test('montage export supports retained audio and 16:9 without overwriting segment settings', async t => {
+  const page=await editor(t,true,longFixture);await generate(page);
+  await page.locator('#montageFormat').selectOption('landscape');
+  await page.locator('#montageAudio').selectOption('keep');
+  await page.locator('#montageQuality').selectOption('1080');
+  const downloading=page.waitForEvent('download');await page.locator('#exportMontage').click();await downloading;
+  const args=await page.evaluate(()=>window.calls[0]);
+  assert.match(args[args.indexOf('-vf')+1],/scale=1920:1080/);
+  assert.ok(!args.includes('-an'));assert.equal(args[args.indexOf('-c:a')+1],'aac');
+  assert.match(await page.locator('.clip-times').first().textContent(),/9:16/);
+});
+
+test('short footage is rejected and out-of-range edited totals cannot export', async t => {
+  const short=await editor(t,true);
+  await short.locator('#generateMontage').click();
+  assert.match(await short.locator('#status').textContent(),/at least 50 seconds/);
+  assert.equal(await short.locator('#count').textContent(),'1 clip');
+  const page=await editor(t,true,longFixture);await generate(page);
+  await page.locator('#end').fill('00:00:00.500');await page.locator('#update').click();
+  await page.locator('#exportMontage').click();
+  assert.match(await page.locator('#exportStatus').textContent(),/total.*45–55/);
+  assert.equal(await page.evaluate(()=>window.calls.length),0);
+});
+
+test('montage choices and generated segments survive project save and reopen', async t => {
+  const page=await editor(t,false,longFixture);
+  await page.locator('#montageLength').fill('55');
+  await page.locator('#montageFormat').selectOption('landscape');
+  await page.locator('#montageAudio').selectOption('keep');
+  await generate(page);
+  const downloading=page.waitForEvent('download');await page.locator('#saveProject').click();
+  const saved=JSON.parse(await textDownload(await downloading));
+  assert.equal(saved.clips.length,6);assert.equal(saved.montage.duration,55);assert.equal(saved.montage.mute,false);
+  await page.locator('#montageAudio').selectOption('mute');page.once('dialog',dialog=>dialog.accept());
+  await openProject(page,saved);
+  await page.waitForFunction(()=>document.querySelector('#montageAudio').value==='keep');
+  assert.equal(await page.locator('#montageFormat').inputValue(),'landscape');
+  assert.match(await page.locator('#montageSummary').textContent(),/55.0 seconds/);
+});
+
+test('montage playback previews cuts and restores the editor framing and mute state', async t => {
+  const page=await editor(t,false,longFixture);await generate(page);
+  await page.locator('#montageFormat').selectOption('landscape');
+  await page.locator('#previewMontage').click();
+  await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('segment 1/6'));
+  assert.equal(await page.locator('#format').inputValue(),'landscape');
+  assert.equal(await page.locator('#video').evaluate(v=>v.muted),true);
+  await page.locator('#video').evaluate(v=>{v.currentTime=8.4;});
+  await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('segment 2/6'));
+  assert.ok(await page.locator('#video').evaluate(v=>v.currentTime>20));
+  await page.locator('#previewMontage').click();
+  assert.equal(await page.locator('#format').inputValue(),'vertical');
+  assert.equal(await page.locator('#video').evaluate(v=>v.muted),false);
+});
+
+test('cancelling during the join keeps every montage selection', async t => {
+  const page=await editor(t,true,longFixture);await generate(page);
+  await page.evaluate(()=>{window.holdJoin=true;});
+  await page.locator('#exportMontage').click();
+  await page.waitForFunction(()=>window.calls.length===7);
+  await page.locator('#cancelExport').click();
+  await page.waitForFunction(()=>document.querySelector('#exportStatus').textContent.includes('Your selections were kept'));
+  assert.equal(await page.locator('#count').textContent(),'6 clips');
+  assert.equal(await page.locator('#exportMontage').isDisabled(),false);
+});
+
+
+test('montage export asks to save a new draft range instead of silently omitting it', async t => {
+  const page=await editor(t,true,longFixture);await generate(page);
+  await page.locator('#cancelEdit').click();
+  await page.locator('#end').fill('00:00:00.500');
+  await page.locator('#exportMontage').click();
+  assert.match(await page.locator('#exportStatus').textContent(),/Add your current range/);
+  assert.equal(await page.evaluate(()=>window.calls.length),0);
 });

@@ -1,3 +1,5 @@
+import {montageSettings} from './montage.js?v=0.6.0';
+
 export const MAX_CLIPS = 500;
 export const MAX_PROJECT_BYTES = 1024 * 1024;
 
@@ -17,7 +19,7 @@ export function safeProject(raw) {
     if (![x,y,z].every(Number.isFinite) || x < 0 || x > 100 || y < 0 || y > 100 || z < 1 || z > 2) throw Error(`Invalid crop settings in clip #${i+1}.`);
     return {name:String(c.name || `Clip ${i+1}`).slice(0,80), start:c.start, end:c.end, format:c.format, crop:{x,y,zoom:z}, mute:Boolean(c.mute), quality:allowedQuality.has(c.quality) ? c.quality : '720'};
   });
-  return {source:{...raw.source, duration}, clips:cleaned, title:typeof raw.title==='string' ? raw.title.slice(0,100) : 'Pursuit Level Clips'};
+  return {source:{...raw.source, duration}, clips:cleaned, montage:raw.montage ? montageSettings(raw.montage) : null, title:typeof raw.title==='string' ? raw.title.slice(0,100) : 'Pursuit Level Clips'};
 }
 
 // Validate against the actual media before replacing any existing selections.
