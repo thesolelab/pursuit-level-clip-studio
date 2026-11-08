@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {chromium} from 'playwright';
 
 const root = new URL('../', import.meta.url);
-const fixture = await readFile(new URL('./fixtures/sample.mp4', import.meta.url));
+const fixture = await readFile(new URL('./fixtures/sample.webm', import.meta.url));
 let browser, server, origin;
 before(async () => {
   server = createServer(async (req, res) => {
@@ -14,7 +14,7 @@ before(async () => {
       const file = new URL('.' + (path === '/' ? '/index.html' : path), root);
       if (!file.href.startsWith(root.href)) throw Error('Invalid path');
       const bytes = await readFile(file);
-      const type = path.endsWith('.js') ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : path.endsWith('.mp4') ? 'video/mp4' : 'text/html';
+      const type = path.endsWith('.js') ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : path.endsWith('.webm') ? 'video/webm' : 'text/html';
       res.writeHead(200, {'Content-Type': type}); res.end(bytes);
     } catch {res.writeHead(404); res.end();}
   }).listen(0, '127.0.0.1');
@@ -57,8 +57,8 @@ async function editor(t, fakeEngine = false) {
     });
   }
   await page.goto(origin);
-  await page.locator('#file').setInputFiles({name: 'sample.mp4', mimeType: 'video/mp4', buffer: fixture});
-  await page.waitForFunction(() => document.querySelector('#video').videoWidth > 0 && document.querySelector('main').getAttribute('aria-busy') === 'false');
+  await page.locator('#file').setInputFiles({name: 'sample.webm', mimeType: 'video/webm', buffer: fixture});
+  await page.waitForFunction(() => document.querySelector('#video').videoWidth > 0 && document.querySelector('main').getAttribute('aria-busy') === 'false', null, {timeout:10000});
   await page.locator('#end').fill('00:00:01.000');
   await page.locator('#add').click();
   return page;
@@ -69,7 +69,7 @@ async function textDownload(download) {
 }
 function project(overrides = {}, count = 1) {
   return {type:'pursuit-level-clip-studio', schemaVersion:1,
-    source:{name:'sample.mp4',size:fixture.length,duration:2,...overrides},
+    source:{name:'sample.webm',size:fixture.length,duration:2,...overrides},
     clips:Array.from({length:count}, (_, i) => ({name:`Restored ${i}`,start:0,end:1,format:'vertical',quality:'720',mute:false,crop:{x:50,y:50,zoom:1}}))};
 }
 async function openProject(page, raw) {
@@ -80,14 +80,14 @@ test('bad videos and cancelled replacements preserve current clips and pending e
   const page = await editor(t);
   await page.getByRole('button', {name:'Edit range', exact:true}).click();
   await page.locator('#end').fill('00:00:00.750');
-  await page.locator('#file').setInputFiles({name:'broken.mp4',mimeType:'video/mp4',buffer:Buffer.from('invalid')});
+  await page.locator('#file').setInputFiles({name:'broken.webm',mimeType:'video/webm',buffer:Buffer.from('invalid')});
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Current work was kept'));
   assert.equal(await page.locator('#count').textContent(), '1 clip');
   assert.equal(await page.locator('#end').inputValue(), '00:00:00.750');
   page.once('dialog', dialog => dialog.dismiss());
-  await page.locator('#file').setInputFiles({name:'other.mp4',mimeType:'video/mp4',buffer:fixture});
+  await page.locator('#file').setInputFiles({name:'other.webm',mimeType:'video/webm',buffer:fixture});
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Replacement cancelled'));
-  assert.match(await page.locator('#filename').textContent(), /^sample.mp4/);
+  assert.match(await page.locator('#filename').textContent(), /^sample.webm/);
   assert.equal(await page.locator('#count').textContent(), '1 clip');
   assert.equal(await page.locator('#end').inputValue(), '00:00:00.750');
 });
@@ -97,12 +97,12 @@ test('project source mismatches report errors without losing current work', asyn
   await openProject(page, project({duration:10}));
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Source duration differs'));
   assert.equal(await page.locator('#count').textContent(), '1 clip');
-  await openProject(page, project({name:'other.mp4'}));
+  await openProject(page, project({name:'other.webm'}));
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Select the original'));
-  await page.locator('#file').setInputFiles({name:'wrong.mp4',mimeType:'video/mp4',buffer:fixture});
+  await page.locator('#file').setInputFiles({name:'wrong.webm',mimeType:'video/webm',buffer:fixture});
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('does not match'));
   assert.equal(await page.locator('#count').textContent(), '1 clip');
-  assert.match(await page.locator('#filename').textContent(), /^sample.mp4/);
+  assert.match(await page.locator('#filename').textContent(), /^sample.webm/);
 });
 
 test('project save includes pending loaded-clip edits and reopens them', async t => {
@@ -175,7 +175,7 @@ test('cores without file-backed input use the copy fallback', async t => {
   const downloading = page.waitForEvent('download');
   await page.getByRole('button', {name:'Export MP4',exact:true}).click();
   await downloading;
-  assert.deepEqual(await page.evaluate(() => window.writes), ['source.mp4']);
+  assert.deepEqual(await page.evaluate(() => window.writes), ['source.webm']);
 });
 
 test('the clip creation limit matches the project import limit', async t => {
@@ -190,14 +190,14 @@ test('the clip creation limit matches the project import limit', async t => {
 
 test('a project with a different matching source restores only after confirmation', async t => {
   const page = await editor(t);
-  const raw = project({name:'other.mp4'}); raw.clips[0].format = 'landscape'; raw.clips[0].end = .5;
+  const raw = project({name:'other.webm'}); raw.clips[0].format = 'landscape'; raw.clips[0].end = .5;
   await openProject(page, raw);
   await page.waitForFunction(() => !document.querySelector('#chooseProjectSource').hidden);
   assert.equal(await page.locator('#count').textContent(), '1 clip');
   page.once('dialog', dialog => dialog.accept());
-  await page.locator('#file').setInputFiles({name:'other.mp4',mimeType:'video/mp4',buffer:fixture});
+  await page.locator('#file').setInputFiles({name:'other.webm',mimeType:'video/webm',buffer:fixture});
   await page.waitForFunction(() => document.querySelector('#format').value === 'landscape');
-  assert.match(await page.locator('#filename').textContent(), /^other.mp4/);
+  assert.match(await page.locator('#filename').textContent(), /^other.webm/);
   assert.equal(await page.locator('.clip-name').inputValue(), 'Restored 0');
   assert.equal(await page.locator('#end').inputValue(), '00:00:00.500');
   assert.equal(await page.locator('#chooseProjectSource').isVisible(), false);
@@ -205,7 +205,7 @@ test('a project with a different matching source restores only after confirmatio
 
 test('cancelling project opening keeps the old project usable', async t => {
   const page = await editor(t);
-  await openProject(page, project({name:'other.mp4'}));
+  await openProject(page, project({name:'other.webm'}));
   await page.waitForFunction(() => !document.querySelector('#cancelProject').hidden);
   await page.locator('#cancelProject').click();
   assert.equal(await page.locator('#count').textContent(), '1 clip');

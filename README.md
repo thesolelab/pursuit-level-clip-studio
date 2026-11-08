@@ -31,7 +31,7 @@ A local-browser video clip editor for Pursuit Level. Import MP4/MOV/WebM, previe
 - `js/zip.js`, `js/zip-worker.js`, `js/zip-client.js`: incremental ZIP writer and worker messaging.
 - `style.css`: responsive styles. The existing logo assets are unchanged.
 - `scripts/prepare-engine.sh`: pinned self-hosted FFmpeg assets for local development and deployment.
-- `tests/`: regression tests and a synthetic two-second blue video with a test tone. It contains no user footage.
+- `tests/`: regression tests and a synthetic two-second WebM blue video with a test tone. It contains no user footage.
 
 ## Local development
 
@@ -54,7 +54,7 @@ npx playwright install --with-deps chromium
 npm run test:browser
 ```
 
-Syntax checks and unit tests cover project validation, export snapshots, crop geometry, and ZIP limits. Python's independent `zipfile` reader verifies checksums, file names, and extracted bytes. Browser regression tests use actual video playback and a mocked encoding engine to check editor workflows, cancellation, locking, the file-copy fallback, and ZIP-worker integration. They do not replace testing actual encoding on supported devices.
+Syntax checks and unit tests cover project validation, export snapshots, crop geometry, and ZIP limits. Python's independent `zipfile` reader verifies checksums, file names, and extracted bytes. Browser regression tests use actual WebM video playback (compatible with bundled Chromium) and a mocked encoding engine to check editor workflows, cancellation, locking, the file-copy fallback, and ZIP-worker integration. They do not replace testing actual encoding on supported devices.
 
 If Chromium is already installed, use `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/path/to/chromium npm run test:browser`.
 
