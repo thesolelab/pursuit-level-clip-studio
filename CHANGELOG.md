@@ -1,4 +1,8 @@
 Pursuit Level Clip Studio — Changelog
+v0.6.1 — Random montage selection
+- Draw random non-overlapping ranges on each generation instead of fixed evenly spaced cuts anchored to the source beginning and end.
+- Keep exact combined selection length and chronological source order. When the source equals the target length, use all available footage.
+- Update interface wording and add regression coverage for fresh generations and previewing variable ranges.
 v0.6.0 — Auto Montage
 - Generate 2–12 evenly spaced source segments for a 45–55-second montage; default to six segments totaling 50 seconds.
 - Preview the sequence, adjust saved ranges/crops, and export one joined MP4 in 9:16 or 16:9 at 720p or 1080p.

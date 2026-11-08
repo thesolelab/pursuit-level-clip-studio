@@ -1,6 +1,6 @@
-import {autoMontage, montageSettings, montageClips} from './js/montage.js?v=0.6.0';
-import {encodeMontage} from './js/montage-export.js?v=0.6.0';
-import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=0.6.0';
+import {autoMontage, montageSettings, montageClips} from './js/montage.js?v=0.6.1';
+import {encodeMontage} from './js/montage-export.js?v=0.6.1';
+import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=0.6.1';
 import {cropRect as calculateCrop, videoFilter} from './js/export-settings.js';
 import {ZipWorker} from './js/zip-client.js';
 
@@ -433,7 +433,7 @@ $('generateMontage').addEventListener('click', () => {
     editorDirty = false; projectDirty = true;
     loadSelection(clips[0]);
     updateMontageSummary();
-    status(`Generated ${planned.length} evenly spaced segments. Edit any range or crop, then export one montage MP4.`);
+    status(`Generated ${planned.length} randomly selected segments. Edit any range or crop, then export one montage MP4.`);
   } catch (error) {status(error.message);}
 });
 $('exportMontage').addEventListener('click', () => {
