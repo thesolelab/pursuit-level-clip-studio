@@ -1,3 +1,7 @@
+import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js';
+import {cropRect as calculateCrop, videoFilter} from './js/export-settings.js';
+import {ZipWorker} from './js/zip-client.js';
+
 'use strict';
 const $ = id => document.getElementById(id);
 const video = $('video');
@@ -7,6 +11,63 @@ const clips = [];
 let sourceURL = null;
 let sourceFile = null;
 let busy = false;
+let loading = false;
+let projectDirty = false;
+let editorDirty = false;
+let activeEngine = null;
+let activeZip = null;
+let cancelRequested = false;
+let exportProgress = null;
+let exportAbort = null;
+const lockedControls = new Map();
+
+function lockWorkspace(locked) {
+  if (locked) {
+    for (const control of document.querySelectorAll('main button, main input, main select')) {
+      if (control.id === 'cancelExport') continue;
+      if (!lockedControls.has(control)) lockedControls.set(control, control.disabled);
+      control.disabled = true;
+    }
+  } else {
+    for (const [control, disabled] of lockedControls) control.disabled = disabled;
+    lockedControls.clear();
+  }
+  dropzone.setAttribute('aria-disabled', String(locked));
+  dropzone.tabIndex = locked ? -1 : 0;
+  document.querySelector('main').setAttribute('aria-busy', String(locked));
+  $('cancelExport').hidden = !busy;
+}
+function unsavedWork() { return projectDirty || editorDirty; }
+function confirmReplacement() {
+  return !unsavedWork() || confirm('Replace your current work? Save your project first if you want to keep unsaved changes.');
+}
+function confirmEditorChange() {
+  return !editorDirty || confirm('Discard changes to the current range? Save the loaded clip or add a new clip to keep them.');
+}
+function updateEditNotice() {
+  $('editStatus').textContent = editorDirty
+    ? (editingId === null ? 'Unsaved new range. Add it as a new clip to keep it.' : 'Unsaved clip changes. Saving the project or exporting will include these changes.')
+    : (projectDirty ? 'Project has unsaved changes. Download Save project to keep them.' : '');
+}
+function markEditorDirty() {
+  if (busy || loading || !sourceFile || !Number.isFinite(video.duration)) return;
+  editorDirty = true;
+  updateEditNotice();
+}
+function editorSettings() {
+  return {...selection(), crop: {...crop}, format: $('format').value, quality: $('quality').value, mute: $('mute').checked};
+}
+function savePendingEdits() {
+  if (!editorDirty || editingId === null) return;
+  const clip = clips.find(item => item.id === editingId);
+  if (!clip) throw Error('Load a clip to edit first.');
+  Object.assign(clip, editorSettings());
+  editorDirty = false;
+  projectDirty = true;
+  render();
+  updateEditNotice();
+}
+
 let ffmpegInstance = null;
 let lastFFmpegLog = '';
 const formats = {vertical: '9:16 Shorts', landscape: '16:9 Widescreen', original: 'Original'};
@@ -20,6 +81,11 @@ const defaultCrop = () => ({x: 50, y: 50, zoom: 1});
 let crop = defaultCrop();
 let cropFrame = null;
 let pendingProject = null;
+function setPendingProject(project) {
+  pendingProject = project;
+  $('chooseProjectSource').hidden = $('cancelProject').hidden = !project;
+}
+
 let projectTitle = 'Pursuit Level Clips';
 const projectFileInput = $('projectFile');
 function readCrop() {
@@ -36,14 +102,7 @@ function applyCrop(settings) {
   drawCrop();
 }
 function cropRect(fmt = $('format').value, settings = crop) {
-  const vw = video.videoWidth, vh = video.videoHeight;
-  if (!vw || !vh) return null;
-  if (fmt === 'original') return {left: 0, top: 0, width: vw, height: vh};
-  const ratio = fmt === 'landscape' ? 16 / 9 : 9 / 16;
-  const baseW = Math.min(vw, vh * ratio);
-  const baseH = baseW / ratio;
-  const width = baseW / settings.zoom, height = baseH / settings.zoom;
-  return {left: (vw - width) * settings.x / 100, top: (vh - height) * settings.y / 100, width, height};
+  return calculateCrop(video.videoWidth, video.videoHeight, fmt, settings);
 }
 function updateFormat() {
   const fmt = $('format').value;
@@ -69,17 +128,21 @@ function drawCrop() {
 }
 function animateCrop() {
   drawCrop();
-  if (!video.paused && !video.ended) cropFrame = requestAnimationFrame(animateCrop);
+  if (!video.paused && !video.ended) cropFrame = video.requestVideoFrameCallback
+    ? video.requestVideoFrameCallback(animateCrop) : requestAnimationFrame(animateCrop);
   else cropFrame = null;
 }
 function stopCropAnimation() {
-  if (cropFrame !== null) cancelAnimationFrame(cropFrame);
+  if (cropFrame !== null) {
+    if (video.cancelVideoFrameCallback) video.cancelVideoFrameCallback(cropFrame);
+    else cancelAnimationFrame(cropFrame);
+  }
   cropFrame = null;
   drawCrop();
 }
 ['cropX', 'cropY', 'cropZoom'].forEach(id => $(id).addEventListener('input', () => applyCrop(readCrop())));
 $('format').addEventListener('change', updateFormat);
-$('resetCrop').addEventListener('click', () => { applyCrop(defaultCrop()); status('Vertical crop reset to center.'); });
+$('resetCrop').addEventListener('click', () => { applyCrop(defaultCrop()); markEditorDirty(); status('Crop reset to center.'); });
 video.addEventListener('play', () => { if (cropFrame === null) animateCrop(); });
 video.addEventListener('pause', stopCropAnimation);
 video.addEventListener('seeked', drawCrop);
@@ -109,6 +172,8 @@ function selection() {
 }
 function setEdit(id = null) {
   editingId = id;
+  editorDirty = false;
+  updateEditNotice();
   $('update').disabled = id === null;
   $('cancelEdit').hidden = id === null;
   $('add').textContent = '+ Add new clip';
@@ -116,6 +181,7 @@ function setEdit(id = null) {
   exportButtons();
 }
 function loadSelection(clip) {
+  if (busy || loading || !confirmEditorChange()) return;
   $('start').value = stamp(clip.start);
   $('end').value = stamp(clip.end);
   previewEnd = null;
@@ -156,6 +222,7 @@ function render() {
     const name = document.createElement('input'); name.className = 'clip-name'; name.type = 'text'; name.value = clip.name;
     name.maxLength = 80; name.setAttribute('aria-label', `Rename clip ${index + 1}`);
     name.addEventListener('change', () => {
+      projectDirty = true; updateEditNotice();
       clip.name = name.value.trim() || `Clip ${String(index + 1).padStart(2, '0')}`;
       name.value = clip.name; status(`Renamed clip to ${clip.name}.`);
     });
@@ -168,6 +235,10 @@ function render() {
       actionButton('Export MP4', () => exportClips([clip])),
       actionButton('Jump to', () => { previewEnd = null; video.pause(); video.currentTime = clip.start; status(`Playhead moved to ${clip.name}.`); }),
       actionButton('Delete', () => {
+        if (busy || loading || (editingId === clip.id && !confirmEditorChange())) return;
+        projectDirty = true;
+        if (editingId === clip.id) editorDirty = false;
+        updateEditNotice();
         const at = clips.findIndex(item => item.id === clip.id);
         if (at !== -1) clips.splice(at, 1);
         if (editingId === clip.id) editingId = null;
@@ -182,41 +253,72 @@ function render() {
 function supportedType(file) {
   return /\.(mp4|mov|webm)$/i.test(file.name) || ['video/mp4', 'video/quicktime', 'video/webm'].includes(file.type);
 }
-function loadFile(file) {
-  if (!file) return;
-  if (!supportedType(file)) { status('Unsupported file type. Choose an MP4, MOV, or WebM video.'); return; }
-  if (busy) return status('Export in progress. Wait before switching source files.');
-  previewEnd = null;
-  video.pause();
-  sourceFile = file;
-  if (sourceURL) URL.revokeObjectURL(sourceURL);
-  sourceURL = URL.createObjectURL(file);
-  video.src = sourceURL;
-  video.load();
-  clips.length = 0;
-  nextId = 1;
-  editingId = null;
-  $('update').disabled = true;
-  $('cancelEdit').hidden = true;
-  $('filename').textContent = `${file.name} · ${(file.size / 1048576).toFixed(1)} MB`;
-  $('format').value = 'vertical';
-  $('mute').checked = false;
-  $('quality').value = '720';
-  applyCrop(defaultCrop());
-  updateFormat();
-  exportButtons();
-  $('start').value = '00:00:00.000';
-  $('end').value = '00:00:00.000';
-  status('Loading video metadata…');
-  render();
+// Probe on a detached player: rejected or cancelled replacements leave current work intact.
+function inspectVideo(file) {
+  return new Promise((resolve, reject) => {
+    const probe = document.createElement('video');
+    const url = URL.createObjectURL(file);
+    const timeout = setTimeout(() => finish(Error('Video loading timed out. Try an H.264 MP4.')), 20000);
+    function finish(error) {
+      clearTimeout(timeout);
+      probe.onloadeddata = probe.onerror = null;
+      const duration = probe.duration;
+      probe.removeAttribute('src'); probe.load(); URL.revokeObjectURL(url);
+      if (error) reject(error); else resolve(duration);
+    }
+    probe.preload = 'auto'; probe.muted = true;
+    probe.onloadeddata = () => finish(Number.isFinite(probe.duration) && probe.duration > 0 && probe.videoWidth
+      ? null : Error('This video does not report usable video dimensions and duration.'));
+    probe.onerror = () => finish(Error('This video cannot be played. Try an H.264 MP4.'));
+    probe.src = url;
+  });
+}
+async function loadFile(file) {
+  if (!file || busy || loading) return;
+  const project = pendingProject;
+  setPendingProject(null);
+  if (!supportedType(file)) return status('Unsupported file type. Choose an MP4, MOV, or WebM video.');
+  if (project && !matchesProjectSource(project.source, file)) return status('This video does not match the project. Current work was kept. Open the project again to retry.');
+  loading = true; lockWorkspace(true);
+  let restored = null;
+  try {
+    status('Checking video before replacing current work…');
+    const duration = await inspectVideo(file);
+    if (project) restored = validateProjectSource(project, file, duration);
+    if (!confirmReplacement()) { status('Replacement cancelled. Current work was kept.'); return; }
+    previewEnd = null; video.pause();
+    if (sourceURL) URL.revokeObjectURL(sourceURL);
+    sourceFile = file;
+    sourceURL = URL.createObjectURL(file);
+    clips.length = 0; nextId = 1; editingId = null;
+    editorDirty = projectDirty = false;
+    projectTitle = project?.title || 'Pursuit Level Clips';
+    if (restored) restored.forEach(clip => clips.push({...clip, id: nextId++}));
+    $('filename').textContent = `${file.name} · ${(file.size / 1048576).toFixed(1)} MB`;
+    $('format').value = 'vertical'; $('mute').checked = false; $('quality').value = '720';
+    $('start').value = '00:00:00.000'; $('end').value = stamp(duration);
+    applyCrop(defaultCrop());
+    video.src = sourceURL; video.load();
+    status(project ? `Restored ${clips.length} clips. Video stays on your device.` : 'Loading video preview…');
+  } catch (error) {
+    status(`${error.message} Current work was kept.`);
+  } finally {
+    loading = false; lockWorkspace(false);
+    $('update').disabled = editingId === null;
+    $('cancelEdit').hidden = editingId === null;
+    updateEditNotice(); render(); exportButtons(); updateFormat();
+  }
 }
 input.addEventListener('change', event => {
   loadFile(event.target.files?.[0]);
   input.value = '';
 });
-dropzone.addEventListener('click', event => { if (event.target !== input) input.click(); });
+input.addEventListener('cancel', () => {
+  if (pendingProject) {setPendingProject(null); status('Project opening cancelled. Current work was kept.');}
+});
+dropzone.addEventListener('click', event => { if (!busy && !loading && event.target !== input) input.click(); });
 dropzone.addEventListener('keydown', event => {
-  if (event.target === dropzone && (event.key === 'Enter' || event.key === ' ')) {
+  if (!busy && !loading && event.target === dropzone && (event.key === 'Enter' || event.key === ' ')) {
     event.preventDefault(); input.click();
   }
 });
@@ -243,15 +345,7 @@ video.addEventListener('loadedmetadata', () => {
   $('end').value = stamp(video.duration);
   updateFormat();
   setupTimeline();
-  if (pendingProject) {
-    const project = pendingProject; pendingProject = null;
-    if (!matchesProjectSource(project.source, sourceFile)) {
-      status('This video does not match the saved project. Open the project again and select the original video.');
-      return;
-    }
-    restoreProject(project);
-    return;
-  }
+  if (clips.length) { loadSelection(clips[0]); return; }
   status(`Video ready · ${stamp(video.duration)}. Select your clip range.`);
 });
 video.addEventListener('error', () => status('This video cannot be played by your browser. MOV and some MP4 codecs may be unsupported; try an H.264 MP4.'));
@@ -262,11 +356,11 @@ video.addEventListener('timeupdate', () => {
 });
 $('setStart').addEventListener('click', () => {
   if (!Number.isFinite(video.duration)) return status('Load a video first.');
-  $('start').value = stamp(video.currentTime); updateTimelineHandles(); status('Start point set.');
+  $('start').value = stamp(video.currentTime); markEditorDirty(); updateTimelineHandles(); status('Start point set.');
 });
 $('setEnd').addEventListener('click', () => {
   if (!Number.isFinite(video.duration)) return status('Load a video first.');
-  $('end').value = stamp(video.currentTime); updateTimelineHandles(); status('End point set.');
+  $('end').value = stamp(video.currentTime); markEditorDirty(); updateTimelineHandles(); status('End point set.');
 });
 $('preview').addEventListener('click', async () => {
   try {
@@ -279,21 +373,28 @@ $('preview').addEventListener('click', async () => {
 });
 $('add').addEventListener('click', () => {
   try {
+    if (busy || loading) return;
+    if (clips.length >= MAX_CLIPS) throw Error(`A project can contain at most ${MAX_CLIPS} clips.`);
     const {start, end} = selection();
     const clip = {id: nextId++, name: `Clip ${String(clips.length + 1).padStart(2, '0')}`, start, end, crop: {...crop}, format: $('format').value, quality: $('quality').value, mute: $('mute').checked};
-    clips.push(clip); setEdit(null); status('New clip selection added.');
+    clips.push(clip); projectDirty = true; setEdit(null); status('New clip selection added.');
   } catch(error) { status(error.message); }
 });
 $('update').addEventListener('click', () => {
   try {
     const clip = clips.find(item => item.id === editingId);
     if (!clip) throw Error('Load a clip to edit first.');
-    Object.assign(clip, selection(), {crop: {...crop}, format: $('format').value, quality: $('quality').value, mute: $('mute').checked});
-    setEdit(null); status(`Saved changes to ${clip.name}.`);
+    Object.assign(clip, editorSettings());
+    projectDirty = true;
+    setEdit(clip.id); status(`Saved changes to ${clip.name}.`);
   } catch(error) { status(error.message); }
 });
-$('cancelEdit').addEventListener('click', () => { setEdit(null); status('Finished editing clip.'); });
-window.addEventListener('beforeunload', () => { if (sourceURL) URL.revokeObjectURL(sourceURL); });
+$('cancelEdit').addEventListener('click', () => { if (!confirmEditorChange()) return; setEdit(null); status('Finished editing clip.'); });
+window.addEventListener('beforeunload', event => {
+  if (unsavedWork() || busy) { event.preventDefault(); event.returnValue = ''; }
+});
+window.addEventListener('pagehide', event => { if (!event.persisted && sourceURL) URL.revokeObjectURL(sourceURL); });
+
 render();
 
 applyCrop(defaultCrop());
@@ -302,9 +403,6 @@ updateFormat();
 
 
 // Project files contain only metadata and clip edits, never source video bytes.
-function matchesProjectSource(saved, file) {
-  return Boolean(saved && file && saved.name === file.name && saved.size === file.size);
-}
 function currentProject() {
   if (!sourceFile || !Number.isFinite(video.duration)) throw Error('Load a video before saving a project.');
   return {
@@ -313,51 +411,49 @@ function currentProject() {
     clips: clips.map(c => ({name:c.name, start:c.start, end:c.end, format:c.format, crop:{...c.crop}, mute:Boolean(c.mute), quality:c.quality || '720'}))
   };
 }
-function safeProject(raw) {
-  if (!raw || raw.type !== 'pursuit-level-clip-studio' || raw.schemaVersion !== 1 || !raw.source || !Array.isArray(raw.clips) || raw.clips.length > 500) throw Error('Invalid or unsupported Clip Studio project.');
-  if (typeof raw.source.name !== 'string' || !Number.isFinite(raw.source.size) || raw.source.size < 0) throw Error('Invalid project source information.');
-  const duration = Number(raw.source.duration);
-  if (!Number.isFinite(duration) || duration <= 0) throw Error('Invalid source duration in project.');
-  const allowedFormat = new Set(['vertical','landscape','original']);
-  const allowedQuality = new Set(['720','1080','source']);
-  const cleaned = raw.clips.map((c, i) => {
-    if (!c || !Number.isFinite(c.start) || !Number.isFinite(c.end) || c.start < 0 || c.end <= c.start || c.end > duration + .01 || !allowedFormat.has(c.format)) throw Error(`Invalid saved clip #${i+1}.`);
-    const z = Number(c.crop?.zoom), x = Number(c.crop?.x), y = Number(c.crop?.y);
-    if (![x,y,z].every(Number.isFinite) || x < 0 || x > 100 || y < 0 || y > 100 || z < 1 || z > 2) throw Error(`Invalid crop settings in clip #${i+1}.`);
-    return {name:String(c.name || `Clip ${i+1}`).slice(0,80), start:c.start, end:c.end, format:c.format, crop:{x,y,zoom:z}, mute:Boolean(c.mute), quality:allowedQuality.has(c.quality) ? c.quality : '720'};
-  });
-  return {source:raw.source, clips:cleaned, title:typeof raw.title==='string' ? raw.title.slice(0,100) : 'Pursuit Level Clips'};
-}
 function restoreProject(project) {
-  if (!matchesProjectSource(project.source, sourceFile)) throw Error('Choose the original source video used by this project.');
-  if (Math.abs(project.source.duration - video.duration) > .25) throw Error('Source duration differs from project; no clips were restored.');
+  const restored = validateProjectSource(project, sourceFile, video.duration);
+  if (!confirmReplacement()) return false;
   clips.length = 0;
-  project.clips.forEach(c => clips.push({...c, id:nextId++}));
+  restored.forEach(clip => clips.push({...clip, id: nextId++}));
   projectTitle = project.title;
-  editingId = null; $('update').disabled = true; $('cancelEdit').hidden = true;
-  if (clips.length) loadSelection(clips[0]); else {render(); exportButtons();}
-  status(`Restored ${clips.length} clip${clips.length === 1 ? '' : 's'} from project. Video stays on your device.`);
+  editorDirty = projectDirty = false;
+  setEdit(null);
+  if (clips.length) loadSelection(clips[0]);
+  updateEditNotice();
+  status(`Restored ${clips.length} clips from project. Video stays on your device.`);
+  return true;
 }
 $('saveProject').addEventListener('click', () => {
   try {
+    if (busy || loading) return;
+    if (editingId === null && editorDirty) throw Error('Add your current range as a new clip before saving the project.');
+    savePendingEdits();
     const project = currentProject();
+    safeProject(project);
     const blob = new Blob([JSON.stringify(project, null, 2)], {type:'application/json'});
     downloadBlob(blob, `${safeFilename(sourceFile.name.replace(/\.[^.]+$/, ''))}-clips.json`);
+    projectDirty = false; updateEditNotice();
     status(`Saved project metadata for ${clips.length} clips as JSON.`);
   } catch(e) {status(e.message);}
 });
-$('openProject').addEventListener('click', () => projectFileInput.click());
+$('openProject').addEventListener('click', () => { if (!busy && !loading) projectFileInput.click(); });
+$('chooseProjectSource').addEventListener('click', () => {if (!busy && !loading && pendingProject) input.click();});
+$('cancelProject').addEventListener('click', () => {setPendingProject(null); status('Project opening cancelled. Current work was kept.');});
 projectFileInput.addEventListener('change', async () => {
   const file = projectFileInput.files?.[0]; projectFileInput.value = '';
-  if (!file) return;
+  if (!file || busy || loading) return;
+  setPendingProject(null);
+  loading = true; lockWorkspace(true);
   try {
-    if (file.size > 1024*1024) throw Error('Project JSON is too large.');
+    if (file.size > MAX_PROJECT_BYTES) throw Error('Project JSON is too large.');
     const project = safeProject(JSON.parse(await file.text()));
+    loading = false; lockWorkspace(false);
     if (matchesProjectSource(project.source, sourceFile) && Number.isFinite(video.duration)) {restoreProject(project); return;}
-    pendingProject = project;
+    setPendingProject(project);
     status(`Project loaded. Select the original source video: ${project.source.name} (${(project.source.size/1048576).toFixed(1)} MB).`);
-    input.click();
-  } catch(e) {pendingProject = null; status(`Could not open project: ${e.message}`);}
+  } catch(e) {setPendingProject(null); status(`Could not open project: ${e.message}`);}
+  finally { loading = false; lockWorkspace(false); exportButtons(); }
 });
 // Simple, seekable timeline. FPS is user-selected; browser frame stepping is approximate.
 function setupTimeline() {
@@ -386,7 +482,7 @@ for(const [range,field] of [['rangeStart','start'],['rangeEnd','end']]) {
     const selected = Number($(range).value);
     if (range==='rangeStart' && selected >= other) $(range).value = Math.max(0,other-.001);
     if (range==='rangeEnd' && selected <= other) $(range).value = Math.min(video.duration,other+.001);
-    $(field).value = stamp(Number($(range).value)); updateTimelineHandles();
+    $(field).value = stamp(Number($(range).value)); markEditorDirty(); updateTimelineHandles();
   });
 }
 for(const id of ['start','end']) $(id).addEventListener('input',updateTimelineHandles);
@@ -402,18 +498,22 @@ for(const [id,field,dir] of [['startBack','start',-1],['startForward','start',1]
   if(!Number.isFinite(current)||!Number.isFinite(opposite)) return;
   const next = Math.round((current+dir*.1)*1000)/1000;
   if (next < 0 || next > video.duration || (field==='start' && next >= opposite) || (field==='end' && next <= opposite)) return;
-  $(field).value = stamp(next); updateTimelineHandles();
+  $(field).value = stamp(next); markEditorDirty(); updateTimelineHandles();
 });
+
+for (const id of ['start', 'end', 'cropX', 'cropY', 'cropZoom']) $(id).addEventListener('input', markEditorDirty);
+for (const id of ['format', 'quality', 'mute']) $(id).addEventListener('change', markEditorDirty);
 
 // FFmpeg.wasm v0.12 single-threaded build. Dependencies load on first export only.
 // Engine files are provided by the validated self-hosted GitHub Pages workflow.
 function exportButtons() {
-  $('exportLoaded').disabled = busy || editingId === null || !sourceFile;
-  $('exportAll').disabled = busy || !clips.length || !sourceFile;
+  $('exportLoaded').disabled = busy || loading || editingId === null || !sourceFile;
+  $('exportAll').disabled = busy || loading || !clips.length || !sourceFile;
 }
 function reportExport(message, percent = null) {
   $('exportStatus').textContent = message;
   if (percent !== null) {
+    if (exportProgress) { percent = Math.max(exportProgress.percent, percent); exportProgress.percent = percent; }
     $('progress').value = Math.max(0, Math.min(100, percent));
     $('progressText').textContent = `${Math.round($('progress').value)}%`;
   } else $('progressText').textContent = 'Working…';
@@ -421,7 +521,7 @@ function reportExport(message, percent = null) {
 // Self-hosted FFmpeg files, included in the GitHub Actions published artifact.
 // All paths are relative to the published GitHub Pages application.
 async function verifyEngineFile(path) {
-  const response = await fetch(path, { method: 'HEAD', cache: 'no-store' });
+  const response = await fetch(path, { method: 'HEAD', cache: 'no-store', signal: exportAbort?.signal });
   if (!response.ok) throw Error(`Required engine file missing: ${path} (HTTP ${response.status}). Verify that the custom Deploy Clip Studio workflow ran successfully.`);
 }
 async function getFFmpeg() {
@@ -431,22 +531,29 @@ async function getFFmpeg() {
   const url = filename => new URL(filename, root).href;
   const paths = ['ffmpeg.js', '814.ffmpeg.js', 'ffmpeg-core.js', 'ffmpeg-core.wasm'];
   try {
-    for (const filename of paths) await verifyEngineFile(url(filename));
+    await Promise.all(paths.map(filename => verifyEngineFile(url(filename))));
+    if (cancelRequested) throw Error('Export cancelled.');
     if (!window.FFmpegWASM) {
       await new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = url('ffmpeg.js');
-        script.onload = resolve;
-        script.onerror = () => reject(Error('Failed to load local ffmpeg.js'));
+        const signal = exportAbort.signal;
+        const abort = () => { script.remove(); reject(Error('Export cancelled.')); };
+        const finish = callback => { signal.removeEventListener('abort', abort); callback(); };
+        script.onload = () => finish(resolve);
+        script.onerror = () => finish(() => reject(Error('Failed to load local ffmpeg.js')));
+        signal.addEventListener('abort', abort, {once: true});
         document.head.append(script);
       });
     }
     reportExport('Initializing ESM FFmpeg core…', 3);
+    if (cancelRequested) throw Error('Export cancelled.');
     const engine = new window.FFmpegWASM.FFmpeg();
+    activeEngine = engine;
     engine.on('log', ({message}) => { lastFFmpegLog = message; });
     engine.on('progress', ({progress}) => {
-      if (busy && Number.isFinite(progress) && progress >= 0 && progress <= 1) {
-        reportExport('Encoding MP4 locally…', 15 + 80 * progress);
+      if (busy && exportProgress && Number.isFinite(progress) && progress >= 0 && progress <= 1) {
+        reportExport(`Encoding ${exportProgress.index + 1}/${exportProgress.total} locally…`, 10 + 85 * (exportProgress.index + progress) / exportProgress.total);
       }
     });
     // The module worker requires the ESM core build. The GitHub workflow publishes it locally.
@@ -454,69 +561,17 @@ async function getFFmpeg() {
       classWorkerURL: url('814.ffmpeg.js'),
       coreURL: url('ffmpeg-core.js'),
       wasmURL: url('ffmpeg-core.wasm')
-    });
+    }, {signal: exportAbort.signal});
+    if (cancelRequested) throw Error('Export cancelled.');
     ffmpegInstance = engine;
     return engine;
   } catch (error) {
+    activeEngine?.terminate(); activeEngine = null; ffmpegInstance = null;
     throw Error(`FFmpeg engine initialization failed: ${error.message || String(error)}`);
   }
 }
-function even(number, max) {
-  const v = Math.floor(number / 2) * 2;
-  return Math.max(2, Math.min(v, Math.floor(max / 2) * 2));
-}
-function videoFilter(clip) {
-  const preset = clip.quality || '720';
-  const box = clip.format === 'vertical' ? {720:[720,1280],1080:[1080,1920]} : {720:[1280,720],1080:[1920,1080]};
-  if (clip.format === 'original') {
-    if (preset === 'source') return 'scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1';
-    const verticalSource = video.videoHeight > video.videoWidth;
-    const dim = verticalSource ? {720:[720,1280],1080:[1080,1920]}[preset] : {720:[1280,720],1080:[1920,1080]}[preset];
-    // Preserve source aspect ratio, including vertical original footage.
-    const w = dim[0], h=dim[1];
-    return `scale=${w}:${h}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1`;
-  }
-  const {left, top, width, height} = cropRect(clip.format, clip.crop);
-  const w = even(width, video.videoWidth), h = even(height, video.videoHeight);
-  const x = Math.max(0, Math.min(Math.floor(left/2)*2, Math.floor((video.videoWidth-w)/2)*2));
-  const y = Math.max(0, Math.min(Math.floor(top/2)*2, Math.floor((video.videoHeight-h)/2)*2));
-  const out = preset === 'source' ? '' : `,scale=${box[preset].join(':')}`;
-  return `crop=${w}:${h}:${x}:${y}${out},setsar=1`;
-}
-
 function safeFilename(name) {
   return (name.replace(/[\\/:*?"<>|\x00-\x1f]/g, '-').trim().replace(/[. ]+$/, '').slice(0, 65) || 'clip');
-}
-
-// ZIP STORE writer (no compression; MP4 is already compressed). No third-party dependency.
-const crcTable = (() => {
-  const t = new Uint32Array(256);
-  for(let n=0;n<256;n++) {let c=n;for(let k=0;k<8;k++) c=c&1 ? (0xedb88320^(c>>>1)) : (c>>>1);t[n]=c>>>0;}
-  return t;
-})();
-function crc32(bytes) {let c=0xffffffff;for(let i=0;i<bytes.length;i++) c=crcTable[(c^bytes[i])&255]^(c>>>8);return (c^0xffffffff)>>>0;}
-function makeZip(entries) {
-  const enc=new TextEncoder(), chunks=[], directory=[];
-  let offset=0;
-  for(const {filename,bytes} of entries) {
-    const name=enc.encode(filename), crc=crc32(bytes);
-    if (name.length>65535 || bytes.length>0xffffffff) throw Error('ZIP entry too large.');
-    const header=new ArrayBuffer(30+name.length),v=new DataView(header);
-    v.setUint32(0,0x04034b50,true);v.setUint16(4,20,true);v.setUint16(6,0x0800,true);v.setUint16(8,0,true);
-    v.setUint32(14,crc,true);v.setUint32(18,bytes.length,true);v.setUint32(22,bytes.length,true);v.setUint16(26,name.length,true);
-    new Uint8Array(header,30).set(name);chunks.push(header,bytes);
-    const cd=new ArrayBuffer(46+name.length),d=new DataView(cd);
-    d.setUint32(0,0x02014b50,true);d.setUint16(4,20,true);d.setUint16(6,20,true);d.setUint16(8,0x0800,true);
-    d.setUint32(16,crc,true);d.setUint32(20,bytes.length,true);d.setUint32(24,bytes.length,true);
-    d.setUint16(28,name.length,true);d.setUint32(42,offset,true);
-    new Uint8Array(cd,46).set(name);directory.push(cd);offset+=header.byteLength+bytes.length;
-    if (offset>0xffffffff) throw Error('Batch ZIP exceeds 4 GB; export fewer clips.');
-  }
-  const size=directory.reduce((n,b)=>n+b.byteLength,0);
-  const footer=new ArrayBuffer(22),f=new DataView(footer);
-  f.setUint32(0,0x06054b50,true);f.setUint16(8,entries.length,true);f.setUint16(10,entries.length,true);
-  f.setUint32(12,size,true);f.setUint32(16,offset,true);
-  return new Blob([...chunks,...directory,footer], {type:'application/zip'});
 }
 
 function downloadBlob(blob, filename) {
@@ -525,29 +580,56 @@ function downloadBlob(blob, filename) {
   a.href = url; a.download = filename; document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
+// WORKERFS lets supported cores read a local File without copying it in full.
+async function attachSource(engine, file) {
+  const path = '/source';
+  try {
+    await engine.createDir(path);
+    if (!await engine.mount('WORKERFS', {files: [file]}, path)) throw Error('WORKERFS unavailable');
+    return {inputName: `${path}/${file.name}`, cleanup: async () => {
+      await engine.unmount(path); await engine.deleteDir(path);
+    }};
+  } catch (error) {
+    if (cancelRequested) throw error;
+    try { await engine.deleteDir(path); } catch {}
+    reportExport('Copying source into processing memory (file-backed input unavailable)…', 5);
+    const inputName = `source.${(file.name.split('.').pop() || 'mp4').toLowerCase()}`;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (cancelRequested) throw Error('Export cancelled.');
+    await engine.writeFile(inputName, bytes);
+    return {inputName, cleanup: () => engine.deleteFile(inputName)};
+  }
+}
 async function exportClips(selected, forceZip = false) {
-  if (busy) return;
+  if (busy || loading) return;
   if (!sourceFile || !video.videoWidth) return reportExport('Load a playable video first.', 0);
   if (!selected.length) return reportExport('Save at least one clip first.', 0);
-  // A practical warning rather than a promise of a universal browser file-size limit.
-  if (sourceFile.size > 450 * 1048576 && !confirm('This source file is over 450 MB. Browser-based encoding may run out of memory or crash. Try a shorter source file if it fails. Continue?')) return;
-  busy = true; exportButtons();
-  const inputName = `source.${(sourceFile.name.split('.').pop() || 'mp4').toLowerCase()}`;
-  const isBatch = forceZip || selected.length > 1;
-  const packaged = [];
+  try { savePendingEdits(); }
+  catch (error) { return reportExport(error.message, 0); }
+  if (sourceFile.size > 450 * 1048576 && !confirm('This source file is over 450 MB. Browser-based encoding may run out of memory or crash. Continue?')) return;
+  // Capture everything before the first await; exports never observe later edits.
+  const job = {clips: snapshotClips(selected), file: sourceFile, width: video.videoWidth, height: video.videoHeight};
+  busy = true; cancelRequested = false; exportAbort = new AbortController();
+  exportProgress = {index: 0, total: job.clips.length, percent: 0};
+  lockWorkspace(true); exportButtons();
+  const isBatch = forceZip || job.clips.length > 1;
+  let source = null;
   let engine = null;
   try {
-    engine = await getFFmpeg();
-    reportExport('Copying source video into local processing memory…', 5);
-    const bytes = new Uint8Array(await sourceFile.arrayBuffer());
-    await engine.writeFile(inputName, bytes);
-    // Source file is copied once and reused for batch exports.
-    for (let i = 0; i < selected.length; i++) {
-      const clip = selected[i];
+    engine = await getFFmpeg(); activeEngine = engine;
+    if (cancelRequested) throw Error('Export cancelled.');
+    source = await attachSource(engine, job.file);
+    if (cancelRequested) throw Error('Export cancelled.');
+    if (isBatch) activeZip = new ZipWorker();
+    for (let i = 0; i < job.clips.length; i++) {
+      if (cancelRequested) throw Error('Export cancelled.');
+      exportProgress.index = i;
+      const clip = job.clips[i];
       const outputName = `output_${clip.id}.mp4`;
-      reportExport(`Encoding ${i + 1}/${selected.length}: ${clip.name}`, 15);
-      const args = ['-ss', clip.start.toFixed(3), '-i', inputName, '-t', (clip.end - clip.start).toFixed(3),
-        '-vf', videoFilter(clip), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p'];
+      reportExport(`Encoding ${i + 1}/${job.clips.length}: ${clip.name}`, 10 + 85 * i / job.clips.length);
+      lastFFmpegLog = '';
+      const args = ['-ss', clip.start.toFixed(3), '-i', source.inputName, '-t', (clip.end - clip.start).toFixed(3),
+        '-vf', videoFilter(clip, job.width, job.height), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p'];
       if (clip.mute) args.push('-an');
       else args.push('-c:a', 'aac', '-b:a', '128k');
       args.push('-movflags', '+faststart', '-y', outputName);
@@ -556,25 +638,39 @@ async function exportClips(selected, forceZip = false) {
         if (exitCode !== 0) throw Error(`FFmpeg exited with code ${exitCode}. ${lastFFmpegLog}`);
         const result = await engine.readFile(outputName);
         if (!result.length) throw Error('FFmpeg returned an empty file.');
-        const name = `${String(i+1).padStart(2,'0')}-${safeFilename(clip.name)}.mp4`;
-        if (isBatch) {packaged.push({filename:name,bytes:result});reportExport(`Prepared ${i + 1}/${selected.length}: ${clip.name}`, Math.min(98, 15+80*(i+1)/selected.length));}
-        else {downloadBlob(new Blob([result], {type:'video/mp4'}), `${safeFilename(clip.name)}.mp4`);reportExport(`Downloaded ${clip.name}`,100);}
-      } finally { try {await engine.deleteFile(outputName);} catch {} }
+        if (isBatch) {
+          await activeZip.add(`${String(i+1).padStart(2,'0')}-${safeFilename(clip.name)}.mp4`, result);
+          reportExport(`Prepared ${i + 1}/${job.clips.length}: ${clip.name}`, 10 + 85 * (i + 1) / job.clips.length);
+        } else downloadBlob(new Blob([result], {type:'video/mp4'}), `${safeFilename(clip.name)}.mp4`);
+      } finally { if (!cancelRequested) try {await engine.deleteFile(outputName);} catch {} }
     }
     if (isBatch) {
-      reportExport('Packaging MP4 clips into a ZIP…',98);
-      const archive=makeZip(packaged);
-      downloadBlob(archive, `${safeFilename(sourceFile.name.replace(/\.[^.]+$/, ''))}-clips.zip`);
-      reportExport(`Downloaded ZIP with ${selected.length} MP4 clips.`,100);
-    } else reportExport('MP4 downloaded to your device.',100);
+      reportExport('Finishing ZIP download…', 98);
+      const archive = await activeZip.finish();
+      if (cancelRequested) throw Error('Export cancelled.');
+      downloadBlob(archive, `${safeFilename(job.file.name.replace(/\.[^.]+$/, ''))}-clips.zip`);
+      reportExport(`Downloaded ZIP with ${job.clips.length} MP4 clips.`, 100);
+    } else reportExport('MP4 downloaded to your device.', 100);
   } catch (error) {
-    reportExport(`Export failed: ${error.message || String(error)}. See browser console for technical details.`, 0);
-    console.error('Clip Studio export error', error);
+    exportProgress = null;
+    reportExport(cancelRequested ? 'Export cancelled. Your selections were kept.' : `Export failed: ${error.message || String(error)}. Try a shorter video or lower resolution.`, 0);
+    // A failed worker may be unusable. Retry with a fresh engine instead of a stale instance.
+    activeEngine?.terminate(); ffmpegInstance = null;
+    if (!cancelRequested) console.error('Clip Studio export error', error);
   } finally {
-    if (engine) try {await engine.deleteFile(inputName);} catch {}
-    busy = false; exportButtons();
+    activeZip?.close(); activeZip = null;
+    if (source && !cancelRequested && ffmpegInstance) try {await source.cleanup();} catch {ffmpegInstance?.terminate(); ffmpegInstance = null;}
+    activeEngine = null; exportProgress = null; exportAbort = null;
+    busy = false; lockWorkspace(false); exportButtons(); updateFormat();
   }
 }
+$('cancelExport').addEventListener('click', () => {
+  cancelRequested = true;
+  exportAbort?.abort();
+  activeEngine?.terminate(); ffmpegInstance = null;
+  activeZip?.close();
+  reportExport('Cancelling export…');
+});
 $('exportLoaded').addEventListener('click', () => {
   const clip = clips.find(item => item.id === editingId);
   if (clip) exportClips([clip]);

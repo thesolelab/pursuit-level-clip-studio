@@ -1,4 +1,15 @@
 Pursuit Level Clip Studio — Changelog
+v0.5.1 — Project safety and export reliability
+- Validate replacement footage and project bounds before clearing current work; warn about unsaved changes.
+- Include pending loaded-clip edits in project saves and exports, and apply one consistent 500-clip limit.
+- Snapshot export settings, lock conflicting controls, add cancellation, and report overall batch progress.
+- Read file-backed input when supported, package ZIPs in a worker, and draw previews on decoded video frames.
+- Extract project, geometry, and ZIP modules; format the stylesheet for readability.
+- Add syntax, project, ZIP interoperability, and browser regression checks; share the pinned engine preparation script between local development and deployment.
+- Remove the obsolete root workflow copy. Preserve existing logo assets and their interface reference.
+Known limitations
+- Work still requires explicit JSON saves; exit warnings do not provide crash recovery.
+- ZIP output still needs space for the complete archive. Large videos and batches can exceed browser limits.
 v0.5.0 — Project workflow and editing improvements (2026-11-07)
 Status: Validated — all five release tests passed in user testing.
 Improvements
