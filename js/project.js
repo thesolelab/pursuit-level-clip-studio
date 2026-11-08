@@ -1,4 +1,4 @@
-import {montageSettings} from './montage.js?v=0.6.0';
+import {montageSettings} from './montage.js?v=0.6.1';
 
 export const MAX_CLIPS = 500;
 export const MAX_PROJECT_BYTES = 1024 * 1024;

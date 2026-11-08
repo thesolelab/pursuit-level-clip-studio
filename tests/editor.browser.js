@@ -235,7 +235,7 @@ test('auto montage generates six segments totaling 50 seconds and exports one mu
   const page = await editor(t, true, longFixture);
   await generate(page);
   assert.match(await page.locator('#montageSummary').textContent(), /50.0 seconds/);
-  assert.equal(await page.locator('#start').inputValue(),'00:00:00.000');
+  assert.match(await page.locator('#start').inputValue(),/^00:/);
   await page.evaluate(()=>{window.holdExport = true;});
   let downloads=0;page.on('download',()=>downloads++);
   const downloading=page.waitForEvent('download');
@@ -272,7 +272,9 @@ test('short footage is rejected and out-of-range edited totals cannot export', a
   assert.match(await short.locator('#status').textContent(),/at least 50 seconds/);
   assert.equal(await short.locator('#count').textContent(),'1 clip');
   const page=await editor(t,true,longFixture);await generate(page);
-  await page.locator('#end').fill('00:00:00.500');await page.locator('#update').click();
+  const startSeconds=(await page.locator('#start').inputValue()).split(':').reduce((sum,part)=>sum*60+Number(part),0);
+  await page.locator('#end').fill(new Date(Math.round((startSeconds+.5)*1000)).toISOString().slice(11,23));
+  await page.locator('#update').click();
   await page.locator('#exportMontage').click();
   assert.match(await page.locator('#exportStatus').textContent(),/total.*45–55/);
   assert.equal(await page.evaluate(()=>window.calls.length),0);
@@ -301,9 +303,12 @@ test('montage playback previews cuts and restores the editor framing and mute st
   await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('segment 1/6'));
   assert.equal(await page.locator('#format').inputValue(),'landscape');
   assert.equal(await page.locator('#video').evaluate(v=>v.muted),true);
-  await page.locator('#video').evaluate(v=>{v.currentTime=8.4;});
+  const seconds = value => value.trim().split(':').reduce((sum,part)=>sum*60+Number(part),0);
+  const firstEnd=seconds(await page.locator('#end').inputValue());
+  const secondStart=seconds((await page.locator('.clip-times').nth(1).textContent()).split(' → ')[0]);
+  await page.locator('#video').evaluate((v,time)=>{v.currentTime=time;},firstEnd+.1);
   await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('segment 2/6'));
-  assert.ok(await page.locator('#video').evaluate(v=>v.currentTime>20));
+  assert.ok(await page.locator('#video').evaluate((v,time)=>v.currentTime>=time && v.currentTime<time+2,secondStart));
   await page.locator('#previewMontage').click();
   assert.equal(await page.locator('#format').inputValue(),'vertical');
   assert.equal(await page.locator('#video').evaluate(v=>v.muted),false);
@@ -328,4 +333,15 @@ test('montage export asks to save a new draft range instead of silently omitting
   await page.locator('#exportMontage').click();
   assert.match(await page.locator('#exportStatus').textContent(),/Add your current range/);
   assert.equal(await page.evaluate(()=>window.calls.length),0);
+});
+
+test('regenerating montage draws fresh random ranges instead of anchoring the first clip at zero', async t => {
+  const page=await editor(t,true,longFixture);
+  await page.evaluate(()=>{let seed=123;Math.random=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};});
+  await generate(page);
+  const first=await page.locator('.clip-times').allTextContents();
+  assert.notEqual(await page.locator('#start').inputValue(),'00:00:00.000');
+  await generate(page);
+  assert.notDeepEqual(await page.locator('.clip-times').allTextContents(),first);
+  assert.match(await page.locator('#montageSummary').textContent(),/50.0 seconds/);
 });

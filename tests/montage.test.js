@@ -4,9 +4,10 @@ import {autoMontage, montageClips, montageSettings} from '../js/montage.js';
 import {encodeMontage, montagePartArgs} from '../js/montage-export.js';
 import {safeProject} from '../js/project.js';
 
-test('two-minute footage produces a 50-second, evenly spread six-part montage', () => {
-  const clips = autoMontage(120, {});
-  assert.equal(clips.length, 6); assert.equal(clips[0].start, 0); assert.equal(clips.at(-1).end, 120);
+test('two-minute footage produces a 50-second random montage without fixed endpoints', () => {
+  let n = 0;
+  const clips = autoMontage(120, {}, () => [.8,.2,.6,.4,.9,.1][n++]);
+  assert.equal(clips.length, 6); assert.ok(clips[0].start > 0); assert.ok(clips.at(-1).end < 120);
   assert.ok(Math.abs(clips.reduce((n,c) => n+c.end-c.start,0)-50)<1e-8);
   for (let i=1;i<clips.length;i++) assert.ok(clips[i].start>clips[i-1].end);
   assert.ok(clips.every(c=>c.format==='vertical' && c.mute));
@@ -59,4 +60,24 @@ test('an encoding error cleans up parts and never attempts a join', async () => 
   const engine={exec:async()=>{calls++;return 1;},deleteFile:async n=>deleted.push(n)};
   await assert.rejects(encodeMontage(engine,'input',autoMontage(120,{}),{width:1920,height:1080}),/segment 1/);
   assert.equal(calls,1);assert.equal(deleted.length,8);
+});
+
+test('new random draws yield different selections without changing duration or overlap rules', () => {
+  const first = autoMontage(120, {}, () => .2);
+  const second = autoMontage(120, {}, () => .8);
+  assert.notDeepEqual(first, second);
+  assert.equal(first[0].start,14); assert.equal(second[0].start,56);
+  for (const random of [() => 0, () => .999999999, Math.random]) {
+    for (let n=0;n<100;n++) {
+      const clips=autoMontage(120.123,{duration:55,count:12},random);
+      assert.ok(Math.abs(clips.reduce((sum,c)=>sum+c.end-c.start,0)-55)<1e-8);
+      assert.ok(clips[0].start>=0 && clips.at(-1).end<=120.123);
+      for(let i=1;i<clips.length;i++) assert.ok(clips[i].start>=clips[i-1].end);
+    }
+  }
+});
+test('a source exactly the target length remains fully covered', () => {
+  const clips=autoMontage(50,{},()=>.8);
+  assert.equal(clips[0].start,0); assert.equal(clips.at(-1).end,50);
+  for(let i=1;i<clips.length;i++) assert.equal(clips[i].start,clips[i-1].end);
 });
