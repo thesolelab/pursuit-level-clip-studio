@@ -489,3 +489,13 @@ test('cancelling a caption export does not wait for a stalled font download',asy
  await page.waitForFunction(()=>document.querySelector('main').getAttribute('aria-busy')==='false',null,{timeout:2000});
  assert.equal(await page.locator('.caption-row').count(),1);assert.equal(await page.locator('#openProject').isDisabled(),false);
 });
+
+test('failed recognition keeps captions and offers local playback of the extracted audio',async t=>{
+ const page=await editor(t,true);await page.locator('#addCaption').click();
+ await page.evaluate(()=>{const Original=window.Worker;window.Worker=class{constructor(url,options){if(String(url).includes('transcribe-worker'))return this;return new Original(url,options);}postMessage(){setTimeout(()=>this.onmessage({data:{type:'error',message:'Audio was extracted, but the speech model returned no words.'}}),0);}terminate(){}};});
+ page.once('dialog',d=>d.accept());await page.locator('#generateCaptions').click();
+ await page.waitForFunction(()=>document.querySelector('#captionStatus').textContent.includes('model returned no words')&&document.querySelector('main').getAttribute('aria-busy')==='false');
+ assert.equal(await page.locator('.caption-row').count(),1);assert.equal(await page.locator('#captionAudioPreview').isVisible(),true);
+ assert.match(await page.locator('#captionAudio').getAttribute('src'),/^blob:/);
+ const save=page.waitForEvent('download');await page.locator('#saveProject').click();const project=JSON.parse((await textDownload(await save)).toString());assert.equal(JSON.stringify(project).includes('blob:'),false);
+});

@@ -1,3 +1,4 @@
+import { captionAudioWav } from './audio.js';
 import {
   defaultCaptions,
   safeCaptions,
@@ -12,10 +13,11 @@ export function captionWorkspace(
   host,
   { video, range, onChange, onGenerate, download }
 ) {
+  let audioURL = null;
   let state = defaultCaptions(),
     page = 0;
   const pageSize = 40;
-  host.innerHTML = `<h2>Captions <span class="pill">DEVELOPMENT</span></h2><p class="muted">Generate English captions for the selected range. Your audio stays on this device. First use downloads roughly 100 MB of model and processing files; allow several minutes on a desktop. Review names and timing before exporting.</p><div class="actions"><button type="button" id="generateCaptions">Generate captions</button><button type="button" id="cancelCaptions" hidden>Cancel transcription</button><button type="button" id="addCaption">Add at playhead</button><button type="button" id="downloadSrt">Download range SRT</button></div><p id="captionStatus" role="status" aria-live="polite"></p><progress id="captionProgress" hidden aria-label="Transcription progress"></progress><label class="check-label"><input type="checkbox" id="captionEnabled"> Show captions in preview and MP4 exports</label><div class="caption-style"></div><p class="muted">Times below are seconds in the source video. Changing timing or the number of words estimates word timing again. SRT covers the selected range and starts at zero; animation appears in MP4 only.</p><div class="actions"><button type="button" id="captionPrevious">Previous captions</button><output id="captionPage"></output><button type="button" id="captionNext">Next captions</button></div><div class="caption-rows"></div>`;
+  host.innerHTML = `<h2>Captions <span class="pill">DEVELOPMENT</span></h2><p class="muted">Generate English captions for the selected range. Your audio stays on this device. First use downloads roughly 100 MB of model and processing files; allow several minutes on a desktop. Review names and timing before exporting.</p><div class="actions"><button type="button" id="generateCaptions">Generate captions</button><button type="button" id="cancelCaptions" hidden>Cancel transcription</button><button type="button" id="addCaption">Add at playhead</button><button type="button" id="downloadSrt">Download range SRT</button></div><p id="captionStatus" role="status" aria-live="polite"></p><div id="captionAudioPreview" hidden><label for="captionAudio">Audio used for captions (selected source range)</label><audio id="captionAudio" controls preload="metadata"></audio><p class="muted">This is the audio sent to local speech recognition. It stays on your device. Muting the exported video does not mute caption generation.</p></div><progress id="captionProgress" hidden aria-label="Transcription progress"></progress><label class="check-label"><input type="checkbox" id="captionEnabled"> Show captions in preview and MP4 exports</label><div class="caption-style"></div><p class="muted">Times below are seconds in the source video. Changing timing or the number of words estimates word timing again. SRT covers the selected range and starts at zero; animation appears in MP4 only.</p><div class="actions"><button type="button" id="captionPrevious">Previous captions</button><output id="captionPage"></output><button type="button" id="captionNext">Next captions</button></div><div class="caption-rows"></div>`;
   const find = (s) => host.querySelector(s),
     message = (text) => (find('#captionStatus').textContent = text);
   const styleHost = find('.caption-style'),
@@ -261,10 +263,29 @@ export function captionWorkspace(
     }
   };
   render();
+  function setAudio(samples) {
+    const audio = find('#captionAudio');
+    audio.pause();
+    audio.removeAttribute('src');
+    if (audioURL) URL.revokeObjectURL(audioURL);
+    audioURL = null;
+    find('#captionAudioPreview').hidden = !samples;
+    if (samples) {
+      audioURL = URL.createObjectURL(
+        new Blob([captionAudioWav(samples)], { type: 'audio/wav' })
+      );
+      audio.src = audioURL;
+    }
+    audio.load();
+  }
   return {
     get: () => state,
     refresh: render,
-    set: (next, duration) => apply(next || defaultCaptions(), false, duration),
+    set: (next, duration) => {
+      setAudio(null);
+      apply(next || defaultCaptions(), false, duration);
+    },
+    audio: setAudio,
     message,
     progress: (text, working) => {
       message(text);
