@@ -1,7 +1,9 @@
+import {captionWorkspace} from './js/captions/workspace.js';
+import {drawCaptions,prepareCaptionExport} from './js/captions/render.js';
 import {autoMontage, montageSettings, montageClips, shuffleMontage, MIN_MONTAGE_SECONDS, MAX_MONTAGE_SECONDS} from './js/montage.js?v=0.6.4';
 import {encodeMontage} from './js/montage-export.js?v=0.6.4';
 import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=0.6.4';
-import {cropRect as calculateCrop, videoFilter} from './js/export-settings.js';
+import {cropRect as calculateCrop} from './js/export-settings.js';
 import {ZipWorker} from './js/zip-client.js';
 
 'use strict';
@@ -25,14 +27,15 @@ const lockedControls = new Map();
 
 function lockWorkspace(locked) {
   if (locked) {
-    for (const control of document.querySelectorAll('main button, main input, main select')) {
-      if (control.id === 'cancelExport') continue;
+    for (const control of document.querySelectorAll('main button, main input, main select, main textarea')) {
+      if (control.id === 'cancelExport' || control.id === 'cancelCaptions') continue;
       if (!lockedControls.has(control)) lockedControls.set(control, control.disabled);
       control.disabled = true;
     }
   } else {
     for (const [control, disabled] of lockedControls) control.disabled = disabled;
     lockedControls.clear();
+    captions.refresh();
   }
   dropzone.setAttribute('aria-disabled', String(locked));
   dropzone.tabIndex = locked ? -1 : 0;
@@ -80,6 +83,148 @@ let nextId = 1;
 let dragDepth = 0;
 const cropCanvas = $('cropCanvas');
 const cropCtx = cropCanvas.getContext('2d');
+let transcriptionWorker = null;
+const captions = captionWorkspace($('captionsWorkspace'), {
+  video,
+  range: selection,
+  download: downloadBlob,
+  onGenerate: generateCaptions,
+  onChange: (dirty) => {
+    if (dirty) {
+      projectDirty = true;
+      updateEditNotice();
+    }
+    drawCrop();
+  }
+});
+async function generateCaptions() {
+  if (busy || loading) return;
+  let range;
+  try {
+    range = selection();
+    if (range.end - range.start > 600)
+      throw Error(
+        'Select ten minutes or less for local transcription. Short ranges use less memory.'
+      );
+  } catch (e) {
+    captions.message(e.message);
+    return;
+  }
+  if (
+    captions
+      .get()
+      .segments.some((c) => c.end > range.start && c.start < range.end) &&
+    !confirm('Replace captions overlapping this selected range?')
+  )
+    return;
+  busy = true;
+  cancelRequested = false;
+  exportAbort = new AbortController();
+  lockWorkspace(true);
+  $('cancelExport').hidden = true;
+  captions.progress('Preparing local audio…', true);
+  let source, engine;
+  try {
+    engine = await getFFmpeg();
+    activeEngine = engine;
+    if (cancelRequested) throw Error('Transcription cancelled.');
+    source = await attachSource(engine, sourceFile);
+    const code = await engine.exec([
+      '-ss',
+      range.start.toFixed(3),
+      '-i',
+      source.inputName,
+      '-t',
+      (range.end - range.start).toFixed(3),
+      '-vn',
+      '-ac',
+      '1',
+      '-ar',
+      '16000',
+      '-f',
+      'f32le',
+      '-y',
+      'caption_audio.raw'
+    ]);
+    if (code !== 0)
+      throw Error(
+        'Could not read narration. Check that the source video contains audio.'
+      );
+    const bytes = await engine.readFile('caption_audio.raw');
+    if (!bytes.length) throw Error('No audio was found.');
+    const audio = new Float32Array(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+    );
+    await engine.deleteFile('caption_audio.raw');
+    if (cancelRequested) throw Error('Transcription cancelled.');
+    const segments = await new Promise((resolve, reject) => {
+      transcriptionWorker = new Worker(
+        new URL('./js/captions/transcribe-worker.js', import.meta.url),
+        { type: 'module' }
+      );
+      transcriptionWorker.onmessage = ({ data }) => {
+        if (data.type === 'progress') captions.progress(data.message, true);
+        else if (data.type === 'complete') resolve(data.segments);
+        else reject(Error(data.message));
+      };
+      transcriptionWorker.onerror = () =>
+        reject(
+          Error(
+            'Speech worker could not start. Try a current desktop Chrome or Edge browser.'
+          )
+        );
+      exportAbort.signal.addEventListener(
+        'abort',
+        () => reject(Error('Transcription cancelled.')),
+        { once: true }
+      );
+      transcriptionWorker.postMessage(
+        { audio, start: range.start, duration: range.end - range.start },
+        [audio.buffer]
+      );
+    });
+    if (cancelRequested) throw Error('Transcription cancelled.');
+    captions.replaceRange(segments, range.start, range.end);
+    captions.message(
+      'Captions generated. Review text and timing before exporting.'
+    );
+  } catch (e) {
+    captions.message(
+      cancelRequested
+        ? 'Transcription cancelled. Existing captions were kept.'
+        : e.message
+    );
+    if (engine && !cancelRequested) {
+      engine.terminate();
+      ffmpegInstance = null;
+    }
+  } finally {
+    transcriptionWorker?.terminate();
+    transcriptionWorker = null;
+    if (source && !cancelRequested && ffmpegInstance)
+      try {
+        await source.cleanup();
+      } catch {}
+    if (engine && !cancelRequested && ffmpegInstance)
+      try {
+        await engine.deleteFile('caption_audio.raw');
+      } catch {}
+    activeEngine = null;
+    exportAbort = null;
+    busy = false;
+    captions.progress($('captionStatus').textContent, false);
+    lockWorkspace(false);
+    exportButtons();
+  }
+}
+$('cancelCaptions').onclick = () => {
+  cancelRequested = true;
+  exportAbort?.abort();
+  transcriptionWorker?.terminate();
+  activeEngine?.terminate();
+  ffmpegInstance = null;
+};
+
 const defaultCrop = () => ({x: 50, y: 50, zoom: 1});
 let crop = defaultCrop();
 let cropFrame = null;
@@ -128,6 +273,7 @@ function drawCrop() {
   const rect = cropRect();
   try { cropCtx.drawImage(video, rect.left, rect.top, rect.width, rect.height, 0, 0, w, h); }
   catch { /* Draw again on the next available frame. */ }
+  drawCaptions(cropCtx,captions.get(),video.currentTime,w,h);
 }
 function animateCrop() {
   drawCrop();
@@ -294,6 +440,7 @@ async function loadFile(file) {
     previewEnd = null; video.pause();
     if (sourceURL) URL.revokeObjectURL(sourceURL);
     sourceFile = file;
+    captions.set(project?.captions,duration);
     sourceURL = URL.createObjectURL(file);
     clips.length = 0; nextId = 1; editingId = null;
     editorDirty = projectDirty = false;
@@ -525,7 +672,7 @@ updateFormat();
 function currentProject() {
   if (!sourceFile || !Number.isFinite(video.duration)) throw Error('Load a video before saving a project.');
   return {
-    type: 'pursuit-level-clip-studio', schemaVersion: 1, title: projectTitle, montage: readMontageSettings(),
+    type: 'pursuit-level-clip-studio', schemaVersion: 1, title: projectTitle, montage: readMontageSettings(), captions: captions.get(),
     source: {name: sourceFile.name, size: sourceFile.size, lastModified: sourceFile.lastModified, duration: video.duration},
     clips: clips.map(c => ({name:c.name, start:c.start, end:c.end, format:c.format, crop:{...c.crop}, mute:Boolean(c.mute), quality:c.quality || '720'}))
   };
@@ -537,6 +684,7 @@ function restoreProject(project) {
   restored.forEach(clip => clips.push({...clip, id: nextId++}));
   projectTitle = project.title;
   applyMontageSettings(project.montage);
+  captions.set(project.captions);
   editorDirty = projectDirty = false;
   setEdit(null);
   if (clips.length) loadSelection(clips[0]);
@@ -552,6 +700,7 @@ $('saveProject').addEventListener('click', () => {
     const project = currentProject();
     safeProject(project);
     const blob = new Blob([JSON.stringify(project, null, 2)], {type:'application/json'});
+    if(blob.size>MAX_PROJECT_BYTES)throw Error('Project is too large. Shorten the transcript before saving.');
     downloadBlob(blob, `${safeFilename(sourceFile.name.replace(/\.[^.]+$/, ''))}-clips.json`);
     projectDirty = false; updateEditNotice();
     status(`Saved project metadata for ${clips.length} clips as JSON.`);
@@ -735,21 +884,23 @@ async function exportClips(selected, forceZip = false, montage = null) {
   catch (error) { return reportExport(error.message, 0); }
   if (sourceFile.size > 450 * 1048576 && !confirm('This source file is over 450 MB. Browser-based encoding may run out of memory or crash. Continue?')) return;
   // Capture everything before the first await; exports never observe later edits.
-  const job = {clips: snapshotClips(selected), file: sourceFile, width: video.videoWidth, height: video.videoHeight};
+  const job = {captions:structuredClone(captions.get()), clips: snapshotClips(selected), file: sourceFile, width: video.videoWidth, height: video.videoHeight};
   busy = true; cancelRequested = false; exportAbort = new AbortController();
   exportProgress = {index: 0, total: job.clips.length + (montage ? 1 : 0), percent: 0};
   lockWorkspace(true); exportButtons();
   const isBatch = !montage && (forceZip || job.clips.length > 1);
   let source = null;
   let engine = null;
+  let captionExport=null;
   try {
     engine = await getFFmpeg(); activeEngine = engine;
     if (cancelRequested) throw Error('Export cancelled.');
     source = await attachSource(engine, job.file);
+    captionExport=await prepareCaptionExport(engine,job.captions,job.width,job.height,{signal:exportAbort.signal});
     if (cancelRequested) throw Error('Export cancelled.');
     if (montage) {
       const result = await encodeMontage(engine, source.inputName, job.clips, {
-        width: job.width, height: job.height, signal: exportAbort.signal,
+        width: job.width, height: job.height, filterForClip:captionExport.filter, signal: exportAbort.signal,
         onStep: (index, label) => {
           exportProgress.index = index; exportProgress.label = label;
           reportExport(label, 10 + 85 * index / exportProgress.total);
@@ -769,7 +920,7 @@ async function exportClips(selected, forceZip = false, montage = null) {
       reportExport(`Encoding ${i + 1}/${job.clips.length}: ${clip.name}`, 10 + 85 * i / job.clips.length);
       lastFFmpegLog = '';
       const args = ['-ss', clip.start.toFixed(3), '-i', source.inputName, '-t', (clip.end - clip.start).toFixed(3),
-        '-vf', videoFilter(clip, job.width, job.height), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p'];
+        '-vf', await captionExport.filter(clip), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p'];
       if (clip.mute) args.push('-an');
       else args.push('-c:a', 'aac', '-b:a', '128k');
       args.push('-movflags', '+faststart', '-y', outputName);
@@ -799,6 +950,7 @@ async function exportClips(selected, forceZip = false, montage = null) {
     if (!cancelRequested) console.error('Clip Studio export error', error);
   } finally {
     activeZip?.close(); activeZip = null;
+    if(!cancelRequested&&ffmpegInstance)await captionExport?.cleanup();
     if (source && !cancelRequested && ffmpegInstance) try {await source.cleanup();} catch {ffmpegInstance?.terminate(); ffmpegInstance = null;}
     activeEngine = null; exportProgress = null; exportAbort = null;
     busy = false; lockWorkspace(false); exportButtons(); updateFormat();

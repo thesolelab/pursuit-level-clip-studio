@@ -44,7 +44,7 @@ async function editor(t, fakeEngine = false, source = fixture) {
         async deleteDir() {}
         async mount() {window.mounts++; if (window.noMount) throw Error('unsupported'); return true;}
         async unmount() {}
-        async writeFile(name, bytes) {window.writes.push(name); if (name.endsWith('.txt')) window.writeContents[name] = new TextDecoder().decode(bytes);}
+        async writeFile(name, bytes) {window.writes.push(name); if (name.endsWith('.txt') || name.endsWith('.ass')) window.writeContents[name] = new TextDecoder().decode(bytes);}
         async deleteFile() {}
         async exec(args) {
           window.calls.push(args);
@@ -425,4 +425,67 @@ test('30 clips can be generated and exported as one montage', async t => {
   assert.match(await page.locator('#montageSummary').textContent(),/30 saved segments.*50.0 seconds/);
   const downloading=page.waitForEvent('download');await page.locator('#exportMontage').click();await downloading;
   assert.equal(await page.evaluate(()=>window.calls.length),31);
+});
+
+test('captions can be corrected, styled, saved, restored and exported as range-relative SRT',async t=>{
+ const page=await editor(t);
+ const initialRequests=[];page.on('request',r=>initialRequests.push(r.url()));
+ await page.locator('#addCaption').click();
+ const text=page.locator('.caption-row textarea');await text.fill('Los Santos custom car');await text.press('Tab');
+ await page.selectOption('#caption-preset','neon');await page.selectOption('#caption-font','oswald');
+ await page.locator('#caption-y').fill('65');await page.locator('#caption-y').press('Tab');
+ const srtDownload=page.waitForEvent('download');await page.locator('#downloadSrt').click();
+ const subtitle=(await textDownload(await srtDownload)).toString();assert.match(subtitle,/Los Santos custom car/);assert.match(subtitle,/00:00:00,000 --> 00:00:01,000/);
+ const save=page.waitForEvent('download');await page.locator('#saveProject').click();const saved=JSON.parse((await textDownload(await save)).toString());
+ assert.equal(saved.captions.style.font,'oswald');assert.equal(saved.captions.style.y,65);assert.equal(saved.captions.segments[0].timing,'estimated');
+ await page.locator('.caption-row').getByRole('button',{name:'Delete',exact:true}).click();
+ page.once('dialog',d=>d.accept());await openProject(page,saved);
+ await page.waitForFunction(()=>document.querySelector('.caption-row textarea')?.value==='Los Santos custom car');
+ assert.equal(await page.locator('#caption-preset').inputValue(),'neon');
+ assert.ok(!initialRequests.some(u=>/huggingface|vendor\/captions/.test(u)),'editing never loads ASR');
+});
+
+test('transcription cancel unlocks editing and preserves existing captions',async t=>{
+ const page=await editor(t,true);
+ await page.locator('#addCaption').click();
+ await page.addInitScript(()=>{});
+ await page.evaluate(()=>{const Original=window.Worker;window.Worker=class{constructor(url,options){if(String(url).includes('transcribe-worker'))return this;return new Original(url,options);}postMessage(){}terminate(){}};});
+ page.once('dialog',d=>d.accept());await page.locator('#generateCaptions').click();
+ await page.waitForFunction(()=>document.querySelector('#cancelCaptions').hidden===false);
+ assert.equal(await page.locator('.caption-row textarea').isDisabled(),true);
+ await page.locator('#cancelCaptions').click();
+ await page.waitForFunction(()=>document.querySelector('main').getAttribute('aria-busy')==='false');
+ assert.equal(await page.locator('.caption-row').count(),1);assert.equal(await page.locator('.caption-row textarea').isDisabled(),false);
+ assert.match(await page.locator('#captionStatus').textContent(),/cancelled/);
+});
+
+test('batch caption exports append styled ASS after each saved crop filter',async t=>{
+ const page=await editor(t,true);
+ await page.locator('#addCaption').click();
+ await page.locator('.caption-row textarea').fill('Customized vehicle');await page.locator('.caption-row textarea').press('Tab');
+ const downloaded=page.waitForEvent('download');await page.locator('#exportAll').click();await downloaded;
+ const result=await page.evaluate(()=>({args:window.calls,ass:Object.entries(window.writeContents).filter(([name])=>name.endsWith('.ass'))}));
+ assert.match(result.args[0][result.args[0].indexOf('-vf')+1],/crop=.*setsar=1,ass=caption_0.ass:fontsdir=caption_fonts/);
+ assert.match(result.ass[0][1],/Customized/);assert.match(result.ass[0][1],/PlayResX: 720/);assert.match(result.ass[0][1],/\\t\(/);
+});
+
+test('caption restoration validates against the newly chosen source duration',async t=>{
+ const page=await editor(t);
+ const {defaultCaptions,estimatedWords}=await import('../js/captions/model.js');
+ const raw=project({name:'long.webm',size:longFixture.length,duration:120});
+ raw.captions={...defaultCaptions(),enabled:true,segments:[{start:10,end:12,text:'Later footage',timing:'estimated',words:estimatedWords('Later footage',10,12)}]};
+ await openProject(page,raw);await page.waitForFunction(()=>!document.querySelector('#chooseProjectSource').hidden);
+ page.once('dialog',d=>d.accept());await page.locator('#file').setInputFiles({name:'long.webm',mimeType:'video/webm',buffer:longFixture});
+ await page.waitForFunction(()=>document.querySelector('#video').duration>100&&document.querySelector('main').getAttribute('aria-busy')==='false');
+ assert.equal(await page.locator('.caption-row textarea').inputValue(),'Later footage');assert.equal(await page.locator('#count').textContent(),'1 clip');
+});
+
+test('cancelling a caption export does not wait for a stalled font download',async t=>{
+ const page=await editor(t,true);await page.locator('#addCaption').click();
+ await page.waitForFunction(()=>Array.from(document.fonts).some(f=>f.family==='PLCaption-anton'&&f.status==='loaded'));
+ await page.route('**/fonts/Anton.ttf',()=>{});
+ const request=page.waitForRequest('**/fonts/Anton.ttf');await page.locator('#exportAll').click();await request;
+ await page.locator('#cancelExport').click();
+ await page.waitForFunction(()=>document.querySelector('main').getAttribute('aria-busy')==='false',null,{timeout:2000});
+ assert.equal(await page.locator('.caption-row').count(),1);assert.equal(await page.locator('#openProject').isDisabled(),false);
 });

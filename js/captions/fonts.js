@@ -1,0 +1,67 @@
+export const CAPTION_FONTS = [
+  {
+    label: 'Anton',
+    file: 'Anton.ttf',
+    assFamily: 'Anton',
+    ascent: 1.17626953125,
+    descent: -0.3291015625,
+    source:
+      'https://raw.githubusercontent.com/google/fonts/main/ofl/anton/Anton-Regular.ttf',
+    key: 'anton',
+    family: 'PLCaption-anton',
+    assScale: 1.7333984375,
+    assOffset: -0.114013671875
+  },
+  {
+    label: 'Montserrat ExtraBold',
+    file: 'Montserrat-ExtraBold.ttf',
+    assFamily: 'Montserrat ExtraBold',
+    ascent: 0.968,
+    descent: -0.251,
+    source:
+      'https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/Montserrat[wght].ttf',
+    key: 'montserrat',
+    family: 'PLCaption-montserrat',
+    assScale: 1.562,
+    assOffset: 0.03049999999999997
+  },
+  {
+    label: 'Bebas Neue',
+    file: 'BebasNeue.ttf',
+    assFamily: 'Bebas Neue',
+    ascent: 0.9,
+    descent: -0.3,
+    source:
+      'https://raw.githubusercontent.com/google/fonts/main/ofl/bebasneue/BebasNeue-Regular.ttf',
+    key: 'bebas',
+    family: 'PLCaption-bebas',
+    assScale: 1.3,
+    assOffset: 5.551115123125783e-17
+  },
+  {
+    label: 'Oswald Bold',
+    file: 'Oswald-Bold.ttf',
+    assFamily: 'Oswald',
+    ascent: 1.193,
+    descent: -0.289,
+    source:
+      'https://raw.githubusercontent.com/google/fonts/main/ofl/oswald/Oswald[wght].ttf',
+    key: 'oswald',
+    family: 'PLCaption-oswald',
+    assScale: 1.702,
+    assOffset: -0.02199999999999991
+  },
+  {
+    label: 'Barlow Condensed Black',
+    file: 'BarlowCondensed-Black.ttf',
+    assFamily: 'Barlow Condensed Black',
+    ascent: 1.0,
+    descent: -0.2,
+    source:
+      'https://raw.githubusercontent.com/google/fonts/main/ofl/barlowcondensed/BarlowCondensed-Black.ttf',
+    key: 'barlow',
+    family: 'PLCaption-barlow',
+    assScale: 1.349,
+    assOffset: -0.0005000000000000004
+  }
+];
