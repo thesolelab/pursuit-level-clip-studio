@@ -143,3 +143,103 @@ test('shuffled montage caption filters keep each original source range', async (
   assert.equal(calls[0][calls[0].indexOf('-vf') + 1], 'ass=source_20.ass');
   assert.equal(calls[1][calls[1].indexOf('-vf') + 1], 'ass=source_5.ass');
 });
+
+test('recognized text survives unusable timestamp chunks instead of reporting no speech', () => {
+  const segments = transcriptSegments(
+    {
+      text: 'Clearly audible dialogue',
+      chunks: [{ text: '', timestamp: [0, 0] }]
+    },
+    12,
+    3,
+    false
+  );
+  assert.equal(segments[0].text, 'Clearly audible dialogue');
+  assert.equal(segments[0].timing, 'estimated');
+  assert.equal(segments[0].start, 12);
+  assert.equal(segments[0].end, 15);
+});
+
+test('recognition retries without timestamps when timed decoders return no words', async () => {
+  const { recognizeCaptions } = await import('../js/captions/recognition.js');
+  const modes = [];
+  const segments = await recognizeCaptions(
+    async (audio, options) => {
+      modes.push(options.return_timestamps);
+      return options.return_timestamps === false
+        ? { text: 'Dialogue from the original video' }
+        : { text: '', chunks: [] };
+    },
+    new Float32Array(16000),
+    8,
+    1
+  );
+  assert.deepEqual(modes, ['word', true, false]);
+  assert.equal(segments[0].text, 'Dialogue from the original video');
+  assert.equal(segments[0].timing, 'estimated');
+  assert.equal(segments[0].start, 8);
+});
+
+test('a correct transcript with broken word alignment is kept without another inference', async () => {
+  const { recognizeCaptions } = await import('../js/captions/recognition.js');
+  let calls = 0;
+  const segments = await recognizeCaptions(
+    async () => {
+      calls++;
+      return {
+        text: 'Los Santos',
+        chunks: [{ text: 'Los', timestamp: [null, null] }]
+      };
+    },
+    new Float32Array(16000),
+    0,
+    1
+  );
+  assert.equal(calls, 1);
+  assert.equal(segments[0].text, 'Los Santos');
+  assert.equal(segments[0].timing, 'estimated');
+});
+
+test('empty recognition never fabricates captions or replaces work with an empty result', async () => {
+  const { recognizeCaptions } = await import('../js/captions/recognition.js');
+  let calls = 0;
+  await assert.rejects(
+    recognizeCaptions(
+      async () => {
+        calls++;
+        return { chunks: [] };
+      },
+      new Float32Array(10),
+      0,
+      1
+    ),
+    /model returned no words/
+  );
+  assert.equal(calls, 3);
+});
+
+test('diagnostic WAV retains the exact source range and standard mono sample rate', async () => {
+  const { captionAudioWav } = await import('../js/captions/audio.js');
+  const bytes = captionAudioWav(new Float32Array([0, 0.5, -0.5, 1, -1]));
+  const view = new DataView(bytes);
+  assert.equal(new TextDecoder().decode(bytes.slice(0, 4)), 'RIFF');
+  assert.equal(view.getUint32(24, true), 16000);
+  assert.equal(view.getUint32(40, true), 10);
+  assert.equal(view.getInt16(46, true), 16384);
+  assert.equal(view.getInt16(48, true), -16384);
+});
+
+test('long transcripts without timestamps are split into valid editable segments', async () => {
+  const { recognizeCaptions } = await import('../js/captions/recognition.js');
+  const text = Array(300).fill('dialogue').join(' ');
+  const segments = await recognizeCaptions(
+    async () => ({ text, chunks: [] }),
+    new Float32Array(10),
+    5,
+    120
+  );
+  assert.equal(segments.length, 38);
+  assert.equal(segments[0].start, 5);
+  assert.equal(segments.at(-1).end, 125);
+  assert.equal(segments.map((c) => c.text).join(' '), text);
+});

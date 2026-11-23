@@ -49,6 +49,13 @@ console.log('ROWS', await page.locator('.caption-row').count());
 await page.screenshot({ path: out + '/editor.png', fullPage: true });
 if (!(await page.locator('.caption-row').count()))
   throw Error('No transcript generated: ' + last);
+await page.waitForFunction(()=>Number.isFinite(document.querySelector('#captionAudio').duration));
+const audioDuration=await page.locator('#captionAudio').evaluate(a=>a.duration);
+const sourceDuration=await page.locator('#video').evaluate(v=>v.duration);
+if(Math.abs(audioDuration-sourceDuration)>.1)throw Error('Extracted audio preview duration differs from the selected range.');
+await page.locator('#captionAudio').evaluate(async a=>{a.muted=true;await a.play();});await page.waitForTimeout(300);
+if(await page.locator('#captionAudio').evaluate(a=>a.currentTime)<.1)throw Error('Extracted audio preview could not play.');
+console.log('Local extracted audio preview decoded and played.',audioDuration);
 const save = page.waitForEvent('download');
 await page.locator('#saveProject').click();
 await (await save).saveAs(out + '/generated-project.json');

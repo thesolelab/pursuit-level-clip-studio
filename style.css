@@ -928,3 +928,5 @@ progress {
     grid-column: 1/-1;
   }
 }
+
+#captionAudio { display: block; max-width: 100%; margin-top: 8px; }

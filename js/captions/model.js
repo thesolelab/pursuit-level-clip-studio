@@ -49,7 +49,10 @@ export const PRESETS = {
 };
 export const MAX_CAPTION_SEGMENTS = 5000;
 export const wordsOf = (text) =>
-  String(text).trim().split(/\s+/u).filter(Boolean);
+  String(text ?? '')
+    .trim()
+    .split(/\s+/u)
+    .filter(Boolean);
 export function defaultCaptions() {
   return {
     enabled: false,
@@ -162,6 +165,21 @@ export function correctCaption(cue, text, start = cue.start, end = cue.end) {
       : estimatedWords(text, start, end)
   };
 }
+function evenlyTimedSegments(text, start, end) {
+  const words = estimatedWords(text, start, end),
+    segments = [];
+  for (let i = 0; i < words.length; i += 8) {
+    const group = words.slice(i, i + 8);
+    segments.push({
+      start: group[0].start,
+      end: group.at(-1).end,
+      text: group.map((w) => w.text).join(' '),
+      words: group,
+      timing: 'estimated'
+    });
+  }
+  return segments;
+}
 export function transcriptSegments(result, offset, duration, precise = true) {
   const chunks = result.chunks || [];
   const segments = [];
@@ -205,14 +223,15 @@ export function transcriptSegments(result, offset, duration, precise = true) {
       const start = offset + Math.max(0, Number(c.timestamp?.[0]) || 0),
         end = offset + Math.min(duration, Number(c.timestamp?.[1]) || duration);
       if (end > start && wordsOf(c.text).length)
-        segments.push({
-          start,
-          end,
-          text: wordsOf(c.text).join(' '),
-          words: estimatedWords(c.text, start, end),
-          timing: 'estimated'
-        });
+        segments.push(...evenlyTimedSegments(c.text, start, end));
     }
+  }
+  // Some Whisper outputs contain recognized text but no usable timestamp chunks.
+  // Keep those words and label the timing honestly instead of calling this silence.
+  if (!precise && !segments.length && wordsOf(result.text).length) {
+    segments.push(
+      ...evenlyTimedSegments(result.text, offset, offset + duration)
+    );
   }
   if (!segments.length)
     throw Error(

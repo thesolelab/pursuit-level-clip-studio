@@ -122,6 +122,7 @@ async function generateCaptions() {
   exportAbort = new AbortController();
   lockWorkspace(true);
   $('cancelExport').hidden = true;
+  captions.audio(null);
   captions.progress('Preparing local audio…', true);
   let source, engine;
   try {
@@ -148,13 +149,14 @@ async function generateCaptions() {
     ]);
     if (code !== 0)
       throw Error(
-        'Could not read narration. Check that the source video contains audio.'
+        'Could not extract the selected video audio. The audio codec or track may not be supported.'
       );
     const bytes = await engine.readFile('caption_audio.raw');
     if (!bytes.length) throw Error('No audio was found.');
     const audio = new Float32Array(
       bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     );
+    captions.audio(audio);
     await engine.deleteFile('caption_audio.raw');
     if (cancelRequested) throw Error('Transcription cancelled.');
     const segments = await new Promise((resolve, reject) => {

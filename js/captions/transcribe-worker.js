@@ -1,4 +1,4 @@
-import { transcriptSegments, safeCaptions, defaultCaptions } from './model.js';
+import { recognizeCaptions } from './recognition.js';
 let recognizer;
 self.onmessage = async ({ data }) => {
   try {
@@ -33,35 +33,18 @@ self.onmessage = async ({ data }) => {
       type: 'progress',
       message: 'Listening locally… This can take several minutes.'
     });
-    let segments;
-    try {
-      const result = await recognizer(data.audio, {
-        return_timestamps: 'word',
-        chunk_length_s: 30,
-        stride_length_s: 5
-      });
-      segments = transcriptSegments(result, data.start, data.duration, true);
-      segments = safeCaptions(
-        { ...defaultCaptions(), segments },
-        data.start + data.duration
-      ).segments;
-    } catch (error) {
-      self.postMessage({
-        type: 'progress',
-        message: `Word timing unavailable (${error.message}). Using estimated word timing…`
-      });
-      const result = await recognizer(data.audio, {
-        return_timestamps: true,
-        chunk_length_s: 30,
-        stride_length_s: 5
-      });
-      segments = transcriptSegments(result, data.start, data.duration, false);
-    }
+    const segments = await recognizeCaptions(
+      recognizer,
+      data.audio,
+      data.start,
+      data.duration,
+      (message) => self.postMessage({ type: 'progress', message })
+    );
     self.postMessage({ type: 'complete', segments });
   } catch (error) {
     self.postMessage({
       type: 'error',
-      message: `Local transcription failed: ${error.message}. Try a shorter range or add captions manually.`
+      message: `Local transcription failed: ${error.message}`
     });
   }
 };

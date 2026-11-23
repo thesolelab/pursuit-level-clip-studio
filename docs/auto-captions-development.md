@@ -81,3 +81,9 @@ Recorded development evidence:
 - Observed actual transcription and export workflow network requests had no non-GET/HEAD uploads. Source and transcript handling stays local by implementation.
 
 **Still required before release:** owner import/playback in CapCut, real GTA narration/gameplay review, longer videos and low-memory devices, Safari/Firefox/mobile validation, live GitHub Pages deployment after approval, and subjective animation/readability review on phones. Automated encoding and codec checks do not prove CapCut import. Keep this as development and do not merge or publish as a completed release until those checks are accepted.
+
+### Recognition recovery follow-up
+
+Recognized text is now retained when Whisper supplies empty or invalid timestamp chunks; those captions explicitly use estimated timing. When timed recognition returns no words, the worker retries phrase timing and then plain transcription without timestamps. It no longer equates unusable timestamps with silent source audio. Completely empty results retain existing captions and explain that the model returned no words.
+
+After extraction, **Audio used for captions** plays a local WAV copy of the exact selected mono 16 kHz audio given to recognition. This helps distinguish a wrong/empty extracted track from a recognition failure even when the source player sounds fine. The preview is cleared when replacing the source or regenerating, stays local, and is never saved in project JSON. It does not add a voiceover or affect export audio. These changes improve recovery and diagnosis; a creator's particular failing video still needs retesting and is not proven fixed by the synthetic fixture.
