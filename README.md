@@ -55,12 +55,13 @@ Project JSON now includes montage choices as well as the saved selections. Older
 Use Node.js 22 or newer, npm, Python 3, and Bash:
 
 ```sh
-npm ci
+npm ci --ignore-scripts
 npm run prepare-engine
+npm run prepare-captions
 python3 -m http.server 8000
 ```
 
-Open `http://localhost:8000`. Serve over HTTP rather than opening `index.html` directly: JavaScript modules and workers require a server. Engine assets are generated into ignored `vendor/ffmpeg/`; there is no application build step or runtime npm dependency.
+Open `http://localhost:8000`. Serve over HTTP rather than opening `index.html` directly: JavaScript modules and workers require a server. Engine assets are generated into ignored `vendor/ffmpeg/`; the caption preparation step bundles browser speech-processing assets. Speech libraries load only when captions are generated. `--ignore-scripts` skips an unnecessary native ONNX GPU installer; the application uses the browser WASM runtime.
 
 ## Validation
 
@@ -82,3 +83,7 @@ Set **Settings → Pages → Source** to **GitHub Actions**. The single deployme
 The separate `checks.yml` workflow runs syntax, unit, and browser regression tests on pull requests and pushes to `main`. Merging a change into `main` triggers deployment; opening a pull request does not deploy it.
 
 Validate actual MP4 playback, audio, crop positioning, and ZIP imports into CapCut when releasing changes to encoding. Browser codec support varies by device and source format.
+
+## Automatic captions — development branch
+
+The optional Captions workspace generates English captions locally, supports corrections and SRT downloads, and burns animated captions into individual, ZIP, and montage MP4 exports. See [caption development and validation notes](docs/auto-captions-development.md). This feature is not a completed release; CapCut and device validation remain open.
