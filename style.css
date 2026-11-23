@@ -865,3 +865,66 @@ progress {
 .timeline-tools > summary { cursor: pointer; color: #c9d2e0; font-size: 13px; font-weight: 700; }
 .timeline-tools > summary:focus-visible { outline: 2px solid #ff6988; outline-offset: 4px; }
 .timeline-tools .timeline { margin-bottom: 0; }
+
+/* Captions are optional and keep the existing crop editor intact. */
+.caption-workspace {
+  margin-top: 24px;
+  border-top: 1px solid #ffffff22;
+  padding-top: 16px;
+}
+.caption-workspace summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 12px 0;
+}
+.captions-panel {
+  padding-top: 12px;
+}
+.caption-style {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.caption-style label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.caption-rows {
+  max-height: 480px;
+  overflow: auto;
+}
+.caption-row {
+  display: grid;
+  grid-template-columns: 1fr 110px 110px;
+  gap: 10px;
+  padding: 16px 0;
+  border-bottom: 1px solid #ffffff22;
+}
+.caption-row textarea,
+.caption-row .actions {
+  grid-column: 1/-1;
+}
+.caption-row textarea {
+  width: 100%;
+  min-height: 64px;
+  background: #111018;
+  color: #fff;
+  border: 1px solid #ffffff33;
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+}
+.caption-style input[type='color'] {
+  min-height: 40px;
+  width: 100%;
+}
+@media (max-width: 600px) {
+  .caption-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .caption-row strong {
+    grid-column: 1/-1;
+  }
+}

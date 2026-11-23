@@ -1,9 +1,9 @@
 import {videoFilter} from './export-settings.js';
 
 // Uniform codecs, dimensions, frame rate and audio layout make the pieces join cleanly.
-export function montagePartArgs(input, clip, output, width, height) {
+export function montagePartArgs(input, clip, output, width, height, filter = videoFilter(clip,width,height)) {
   const args = ['-ss', clip.start.toFixed(3), '-i', input, '-t', (clip.end - clip.start).toFixed(3),
-    '-vf', videoFilter(clip, width, height), '-r', '30', '-c:v', 'libx264', '-preset', 'ultrafast',
+    '-vf', filter, '-r', '30', '-c:v', 'libx264', '-preset', 'ultrafast',
     '-crf', '23', '-pix_fmt', 'yuv420p', '-video_track_timescale', '90000'];
   if (clip.mute) args.push('-an');
   else args.push('-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2');
@@ -11,14 +11,14 @@ export function montagePartArgs(input, clip, output, width, height) {
   return args;
 }
 
-export async function encodeMontage(engine, input, clips, {width, height, signal, onStep = () => {}}) {
+export async function encodeMontage(engine, input, clips, {width, height, signal, onStep = () => {}, filterForClip}) {
   const parts = clips.map((_, i) => `montage_part_${i}.mp4`);
   const list = 'montage_list.txt', output = 'montage_final.mp4';
   const check = () => {if (signal?.aborted) throw Error('Export cancelled.');};
   try {
     for (let i = 0; i < clips.length; i++) {
       check(); onStep(i, `Encoding montage segment ${i + 1}/${clips.length}…`);
-      const exitCode = await engine.exec(montagePartArgs(input, clips[i], parts[i], width, height));
+      const exitCode = await engine.exec(montagePartArgs(input, clips[i], parts[i], width, height, filterForClip ? await filterForClip(clips[i]) : undefined));
       if (exitCode !== 0) throw Error(`Could not encode montage segment ${i + 1}.`);
     }
     check(); onStep(clips.length, 'Joining montage into one MP4…');
