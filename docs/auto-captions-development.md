@@ -16,7 +16,8 @@ Model word times are predictions, not guaranteed frame-accurate alignment. The U
 ## Architecture and privacy
 
 - `js/captions/model.js`: bounded validation, corrected word alignment, caption grouping, and standard SRT serialization.
-- `speech.js`: runs the local Silero V5 speech detector over 16 kHz samples, retaining source-relative speech regions and pauses. It uses short margins around detected speech; this is probabilistic detection, not a frame-accuracy guarantee.
+- `alignment.js`: aligns full-context Whisper transcripts to acoustic frames using a pinned CTC model in bounded context windows.
+- `speech.js`: the previous Silero speech-region helper, retained for diagnostic/regression coverage; the default worker no longer gates dialogue on its detections.
 - `transcribe-worker.js`: lazily imports the self-hosted Transformers.js/ONNX browser bundle, downloads a pinned English Whisper Tiny model, and processes mono 16 kHz audio in a dedicated worker. CPU WebAssembly works without a GPU or cross-origin isolation. Threads are limited to one for GitHub Pages compatibility. Browser model caching is used where permitted.
 - `workspace.js`: caption editing and style controls. Only 40 segments are rendered at once.
 - `render.js`: shared word measurements and layout, Canvas preview, and ASS animation generation. Preview caches layouts and uses binary search to locate the current caption group. Five bundled TTFs are used both by FontFace and FFmpeg/libass; no installed system font is required.
@@ -41,7 +42,7 @@ Licenses: model card declares Apache-2.0; original OpenAI Whisper code is MIT. T
 
 ## Resource limits
 
-First use downloads approximately 120 MB including the speech model, browser runtime, and FFmpeg; exact transfer and cache sizes vary. Processing can require hundreds of MB of memory and be slower than real time on older devices. Select short ranges first; transcription is limited to ten minutes per request. A GPU is not required. Cache eviction, private browsing, unavailable downloads, disabled WASM/SIMD, unsupported browsers, and memory pressure can cause failures; errors keep current work and manual captions remain available. Long/4K source files can still exceed FFmpeg/browser limits, especially where file-backed mounting is unavailable. Preview never re-encodes video.
+First use downloads approximately 220 MB including the speech model, browser runtime, and FFmpeg; exact transfer and cache sizes vary. Processing can require hundreds of MB of memory and be slower than real time on older devices. Select short ranges first; transcription is limited to ten minutes per request. A GPU is not required. Cache eviction, private browsing, unavailable downloads, disabled WASM/SIMD, unsupported browsers, and memory pressure can cause failures; errors keep current work and manual captions remain available. Long/4K source files can still exceed FFmpeg/browser limits, especially where file-backed mounting is unavailable. Preview never re-encodes video.
 
 Current implementation is English only. There is no speaker detection, automatic emphasis-word selection, rich punctuation alignment editor, SRT import, or karaoke accuracy guarantee. Presets use readable deterministic animation; Pursuit Pop highlights the spoken word, Neon shows the phrase with active-word transitions, and Cinematic accents the first word while sliding/fading the phrase.
 
@@ -104,3 +105,15 @@ A user-supplied gameplay sample reproduced the speech-timestamp failure. Its fir
 Known non-dialogue labels are now excluded from dialogue recognition. An empty/non-dialogue region is skipped and later regions continue, while genuine processing/alignment errors still fail without replacing existing captions. A selection containing only non-dialogue also keeps existing work. No timing is invented and no speech detector/model is changed. The module cache version advances together so deployed clients receive the correction.
 
 The full supplied clip was successfully transcribed into six word-timed segments and exported through the actual browser FFmpeg workflow. The output retains the source framing and audio duration, and decoded audio correlation at original timestamps was approximately 0.999. User footage and transcripts remain private local test artifacts and are not added to repository fixtures. Recognition wording remains subject to manual review; successful processing is not a guarantee that every word is correct.
+
+### Full-context recognition and acoustic word alignment
+
+The creator's timing reference exposed a separate failure: the speech detector missed the opening game dialogue around six seconds, so hard-gating recognition on its regions discarded the line entirely. Successful processing of only the remaining detected regions was not validation of complete speech coverage.
+
+The default worker now transcribes the full selected audio with Whisper and strips bracketed sound/music annotations, including labels split across chunks. Detector thresholds no longer decide which dialogue can be transcribed. A second local model, `Xenova/wav2vec2-base-960h` at revision `a19f851b3d42865797e410752b4c570c871e4825`, aligns the recognized text to acoustic frames with CTC Viterbi alignment. Coarse Whisper times only select overlapping context windows; published caption times come from the acoustic path. Bounded windows and trellis-size limits constrain memory. Existing rendering, project timing and export remain unchanged.
+
+This requires an additional quantized model download on first use (roughly 220 MB total preparation downloads including existing assets). The additional model is cached where browser storage permits. Its upstream model card is Apache-2.0; see `licenses/wav2vec2-model-NOTICE.txt`. No new npm runtime or external audio service is introduced. Word recognition can still be wrong, particularly homophones, names and noisy dialogue; accurate timing does not correct a misrecognized transcript. English number forms are normalized for alignment while original display wording is preserved.
+
+The supplied gameplay clip now generates the opening line starting at 5.74 seconds rather than 8.448 seconds; the game's visible opening subtitle appears around 5.75 seconds, consistent with the creator's approximately six-second reference. The new full-context run retained 54 words in seven word-timed segments versus the earlier six sparse segments. The test output is private and not included in repository fixtures. This is a measured reference-case improvement, not a guarantee that every line in every recording is perfectly recognized or aligned.
+
+Older speech-region helper code and assets remain for regression coverage but are no longer used by the default worker. Previously saved timings require regeneration.

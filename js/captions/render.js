@@ -1,5 +1,5 @@
 import { CAPTION_FONTS } from './fonts.js';
-import { captionGroups } from './model.js?v=speech-align-2';
+import { captionGroups } from './model.js?v=frame-align-1';
 import { cropRect, videoFilter } from '../export-settings.js';
 const loaded = new Map(),
   ready = new Set(),

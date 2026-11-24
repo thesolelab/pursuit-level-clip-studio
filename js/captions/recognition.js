@@ -4,7 +4,7 @@ import {
   defaultCaptions,
   wordsOf,
   estimatedWords
-} from './model.js?v=speech-align-2';
+} from './model.js?v=frame-align-1';
 
 // Whisper can emit a control label for game sounds or silence. These are not
 // recognized dialogue, even when the decoder supplies token timestamps.

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "prepare-engine": "bash scripts/prepare-engine.sh",
-    "check": "node --check app.js && node --check js/montage.js && node --check js/montage-export.js && node --check js/project.js && node --check js/export-settings.js && node --check js/zip.js && node --check js/zip-client.js && node --check js/zip-worker.js && node --check js/captions/model.js && node --check js/captions/render.js && node --check js/captions/workspace.js && node --check js/captions/transcribe-worker.js && node --check scripts/prepare-captions.mjs && node --check js/captions/recognition.js && node --check js/captions/audio.js && node --check js/captions/speech.js",
+    "check": "node --check app.js && node --check js/montage.js && node --check js/montage-export.js && node --check js/project.js && node --check js/export-settings.js && node --check js/zip.js && node --check js/zip-client.js && node --check js/zip-worker.js && node --check js/captions/model.js && node --check js/captions/render.js && node --check js/captions/workspace.js && node --check js/captions/transcribe-worker.js && node --check scripts/prepare-captions.mjs && node --check js/captions/recognition.js && node --check js/captions/audio.js && node --check js/captions/speech.js && node --check js/captions/alignment.js",
     "test": "node --test tests/*.test.js",
     "test:browser": "node --test --test-timeout=20000 tests/*.browser.js",
     "prepare-captions": "node scripts/prepare-captions.mjs"
