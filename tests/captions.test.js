@@ -243,3 +243,37 @@ test('long transcripts without timestamps are split into valid editable segments
   assert.equal(segments.at(-1).end, 125);
   assert.equal(segments.map((c) => c.text).join(' '), text);
 });
+
+test('rounded caption endpoints clamp to the exact video boundary within one millisecond', () => {
+  const duration = 1.23456,
+    state = { ...defaultCaptions(), segments: [cue('Final word', 0, 1.235)] };
+  const result = safeCaptions(state, duration);
+  assert.equal(result.segments[0].end, duration);
+  assert.equal(result.segments[0].words.at(-1).end, duration);
+  assert.throws(
+    () =>
+      safeCaptions(
+        { ...state, segments: [cue('Too far', 0, duration + 0.002)] },
+        duration
+      ),
+    /Invalid caption end/
+  );
+});
+
+test('floating-point arithmetic at the source end does not invalidate generated captions', () => {
+  const end = 0.1 + 0.2,
+    state = { ...defaultCaptions(), segments: [cue('Last word', 0.1, end)] };
+  assert.equal(safeCaptions(state, 0.3).segments[0].end, 0.3);
+});
+
+test('clamping cannot leave a zero-length final word outside the video', () => {
+  const duration = 1.23456;
+  assert.throws(
+    () =>
+      safeCaptions(
+        { ...defaultCaptions(), segments: [cue('After end', 1.2345, 1.2354)] },
+        duration
+      ),
+    /word timing/
+  );
+});

@@ -155,8 +155,13 @@ export function captionWorkspace(
             next[index] = correctCaption(
               cue,
               text.value,
-              Number(start.value),
-              Number(end.value)
+              // An unchanged millisecond display is not a timing edit.
+              Number(start.value) === Number(cue.start.toFixed(3))
+                ? cue.start
+                : Number(start.value),
+              Number(end.value) === Number(cue.end.toFixed(3))
+                ? cue.end
+                : Number(end.value)
             );
             updateSegments(next);
           } catch (e) {

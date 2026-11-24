@@ -111,7 +111,8 @@ export function safeCaptions(raw, duration = Infinity) {
   const segments = raw.segments
     .map((cue, i) => {
       const start = bounded(cue.start, 0, duration, 'start'),
-        end = bounded(cue.end, 0, duration, 'end');
+        // Match the editor/clip validator's 1 ms rounding tolerance.
+        end = Math.min(duration, bounded(cue.end, 0, duration + 0.001, 'end'));
       const text = String(cue.text || '').trim();
       if (end <= start || !text || text.length > 800)
         throw Error(`Invalid caption segment ${i + 1}.`);
@@ -130,7 +131,7 @@ export function safeCaptions(raw, duration = Infinity) {
           !Number.isFinite(word.end) ||
           word.start < start - 0.001 ||
           word.end > end + 0.001 ||
-          word.end <= word.start ||
+          Math.min(end, word.end) <= Math.max(start, word.start) ||
           (j && word.start < words[j - 1].end - 0.001)
         )
           throw Error('Invalid caption word timing.');

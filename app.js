@@ -318,8 +318,8 @@ function selection() {
   const end = parseStamp($('end').value);
   if (!Number.isFinite(video.duration)) throw Error('Load a playable video first.');
   if (!Number.isFinite(start) || !Number.isFinite(end)) throw Error('Use timestamps in HH:MM:SS.mmm format.');
-  if (start < 0 || end > video.duration + 0.001 || start >= end) throw Error('Start must be before end, within the video duration.');
-  return {start, end};
+  if (start < 0 || end > video.duration + 0.001 || start >= Math.min(end, video.duration)) throw Error('Start must be before end, within the video duration.');
+  return {start, end: Math.min(end, video.duration)};
 }
 function setEdit(id = null) {
   editingId = id;
