@@ -499,3 +499,25 @@ test('failed recognition keeps captions and offers local playback of the extract
  assert.match(await page.locator('#captionAudio').getAttribute('src'),/^blob:/);
  const save=page.waitForEvent('download');await page.locator('#saveProject').click();const project=JSON.parse((await textDownload(await save)).toString());assert.equal(JSON.stringify(project).includes('blob:'),false);
 });
+
+test('generating captions at a rounded source endpoint uses the exact media end',async t=>{
+ const page=await editor(t,true);
+ await page.evaluate(()=>{
+  Object.defineProperty(document.querySelector('#video'),'duration',{configurable:true,get:()=>1.23456});
+  const Original=window.Worker;window.Worker=class{
+   constructor(url,options){if(String(url).includes('transcribe-worker'))return this;return new Original(url,options);}
+   postMessage(data){window.captionRequestedEnd=data.start+data.duration;setTimeout(()=>this.onmessage({data:{type:'complete',segments:[{start:data.start,end:window.captionRequestedEnd,text:'Speech',timing:'word',words:[{text:'Speech',start:data.start,end:window.captionRequestedEnd}]}]}}),0);}
+   terminate(){}
+  };
+ });
+ await page.locator('#end').fill('00:00:01.235');await page.locator('#add').click();await page.locator('#generateCaptions').click();
+ await page.waitForFunction(()=>document.querySelector('#captionStatus').textContent.includes('Captions generated'));
+ assert.equal(await page.evaluate(()=>window.captionRequestedEnd),1.23456);
+ // Correcting text also reads rounded start/end fields; it must preserve a valid endpoint.
+ await page.locator('.caption-row textarea').fill('Dialogue');await page.locator('.caption-row textarea').press('Tab');
+ const save=page.waitForEvent('download');await page.locator('#saveProject').click();
+ const project=JSON.parse((await textDownload(await save)).toString());
+ assert.equal(project.captions.segments[0].end,1.23456);assert.equal(project.captions.segments[0].text,'Dialogue');
+ assert.equal(project.captions.segments[0].words.at(-1).end,1.23456);
+ assert.equal(project.captions.segments[0].timing,'word');
+});
