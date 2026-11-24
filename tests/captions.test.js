@@ -225,7 +225,7 @@ test('empty timed recognition preserves existing work without untimed fallback',
       0,
       1
     ),
-    /no aligned words/
+    { code: 'NO_SPEECH' }
   );
   assert.equal(calls, 2);
 });
@@ -345,4 +345,102 @@ test('transcription keeps original source offsets when silence is skipped', asyn
   assert.equal(segments[1].start, 37);
   assert.equal(segments[1].end, 38);
   assert.equal(segments[0].timing, 'word');
+});
+
+test('Whisper blank-audio tokens do not become dialogue or timestamp failures', async () => {
+  const { recognizeCaptions } = await import('../js/captions/recognition.js');
+  await assert.rejects(
+    recognizeCaptions(
+      async (audio, options) =>
+        options.return_timestamps === 'word'
+          ? {
+              text: ' [BLANK_AUDIO]',
+              chunks: [
+                { text: ' [BLANK', timestamp: [0, 0.68] },
+                { text: '_AUDIO]', timestamp: [0.68, 0.68] }
+              ]
+            }
+          : { text: '', chunks: [] },
+      new Float32Array(5632),
+      3.04,
+      0.352
+    ),
+    { code: 'NO_SPEECH' }
+  );
+});
+
+test('a nonspeech detection cannot abort later genuine dialogue', async () => {
+  const { recognizeSpeechRegions } = await import(
+    '../js/captions/recognition.js'
+  );
+  let calls = 0;
+  const segments = await recognizeSpeechRegions(
+    async (audio, options) => {
+      calls++;
+      return calls <= 2
+        ? { text: ' [BLANK_AUDIO]', chunks: [] }
+        : {
+            text: 'Actual dialogue',
+            chunks: [
+              { text: 'Actual', timestamp: [0, 0.25] },
+              { text: 'dialogue', timestamp: [0.25, 0.5] }
+            ]
+          };
+    },
+    new Float32Array(160000),
+    10,
+    10,
+    [
+      { start: 3.04, end: 3.392 },
+      { start: 5, end: 6 }
+    ]
+  );
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].start, 15);
+  assert.equal(segments[0].text, 'Actual dialogue');
+  assert.equal(segments[0].timing, 'word');
+});
+
+test('nonspeech-only selections cannot clear existing caption work', async () => {
+  const { recognizeSpeechRegions } = await import(
+    '../js/captions/recognition.js'
+  );
+  await assert.rejects(
+    recognizeSpeechRegions(
+      async () => ({ text: '[MUSIC]', chunks: [] }),
+      new Float32Array(16000),
+      0,
+      1,
+      [{ start: 0, end: 1 }]
+    ),
+    /existing captions were kept/
+  );
+});
+
+test('skipping nonspeech never hides a genuine speech-alignment failure', async () => {
+  const { recognizeSpeechRegions } = await import(
+    '../js/captions/recognition.js'
+  );
+  let calls = 0;
+  await assert.rejects(
+    recognizeSpeechRegions(
+      async () => {
+        calls++;
+        return calls === 1
+          ? {
+              text: 'Speech',
+              chunks: [{ text: 'Speech', timestamp: [0, 0.5] }]
+            }
+          : { text: 'Actual spoken words', chunks: [] };
+      },
+      new Float32Array(64000),
+      0,
+      4,
+      [
+        { start: 0, end: 1 },
+        { start: 2, end: 3 }
+      ]
+    ),
+    /reliable speech timestamps/
+  );
 });

@@ -4,8 +4,17 @@ import {
   defaultCaptions,
   wordsOf,
   estimatedWords
-} from './model.js?v=speech-align-1';
+} from './model.js?v=speech-align-2';
 
+// Whisper can emit a control label for game sounds or silence. These are not
+// recognized dialogue, even when the decoder supplies token timestamps.
+const NON_SPEECH =
+  /^(?:\s*\[(?:BLANK_AUDIO|NO_SPEECH|SILENCE|MUSIC|APPLAUSE|LAUGHTER)\][\s.!]*)+$/i;
+const noSpeech = () =>
+  Object.assign(
+    Error('The speech model returned no dialogue for this detected region.'),
+    { code: 'NO_SPEECH' }
+  );
 // Never turn missing alignment into invented source-wide speech timing.
 export async function recognizeCaptions(
   recognizer,
@@ -35,6 +44,7 @@ export async function recognizeCaptions(
       processingError = error;
       continue;
     }
+    if (NON_SPEECH.test(result.text || '')) continue;
     if (wordsOf(result.text).length) recognizedText = result.text;
     try {
       if (timing === 'word')
@@ -77,9 +87,7 @@ export async function recognizeCaptions(
     );
   if (processingError)
     throw Error(`Speech alignment could not run: ${processingError.message}`);
-  throw Error(
-    'The speech model returned no aligned words. Play “Audio used for captions” to check the selected audio. No captions were replaced.'
-  );
+  throw noSpeech();
 }
 
 // Region offsets remain tied to the original source, including pauses between
@@ -102,16 +110,27 @@ export async function recognizeSpeechRegions(
       );
     if (last <= first) continue;
     onProgress(`Aligning speech region ${i + 1}/${ranges.length}…`);
-    segments.push(
-      ...(await recognizeCaptions(
-        recognizer,
-        audio.subarray(first, last),
-        start + first / 16000,
-        (last - first) / 16000,
-        onProgress
-      ))
-    );
+    try {
+      segments.push(
+        ...(await recognizeCaptions(
+          recognizer,
+          audio.subarray(first, last),
+          start + first / 16000,
+          (last - first) / 16000,
+          onProgress
+        ))
+      );
+    } catch (error) {
+      if (error.code !== 'NO_SPEECH') throw error;
+      onProgress(
+        `No dialogue in region ${i + 1}; checking the remaining speech regions…`
+      );
+    }
   }
+  if (!segments.length)
+    throw Error(
+      'No dialogue was recognized in the detected regions. Check “Audio used for captions”; existing captions were kept.'
+    );
   return safeCaptions({ ...defaultCaptions(), segments }, start + duration)
     .segments;
 }
