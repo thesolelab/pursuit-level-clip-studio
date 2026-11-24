@@ -6,9 +6,9 @@ import {
   correctCaption,
   estimatedWords,
   srt
-} from './model.js?v=speech-align-1';
+} from './model.js?v=speech-align-2';
 import { CAPTION_FONTS } from './fonts.js';
-import { ensureCaptionFont } from './render.js?v=speech-align-1';
+import { ensureCaptionFont } from './render.js?v=speech-align-2';
 export function captionWorkspace(
   host,
   { video, range, onChange, onGenerate, download }

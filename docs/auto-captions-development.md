@@ -96,3 +96,11 @@ For repeatable silence tests, `scripts/validate-captions.mjs` accepts `CAPTION_T
 ### Caption endpoint rounding correction
 
 Caption ends now use the same one-millisecond tolerance as clip ranges and are clamped to the exact media duration, including their final word timestamps. Larger overruns and words that would become zero-length remain invalid. Selected ranges are capped before transcription; text-only corrections preserve original timestamps when the millisecond fields are unchanged. Regression cases reproduce the former `Invalid caption end` error with a 1.23456-second source displayed as 1.235 seconds and with floating-point arithmetic at the source boundary.
+
+### Gameplay non-dialogue recovery
+
+A user-supplied gameplay sample reproduced the speech-timestamp failure. Its first detected region was 0.352 seconds long; Whisper returned the control label `[BLANK_AUDIO]` with unusable token times, then an empty phrase result. This label had been treated as recognized dialogue, causing the entire transcription to abort before later speech.
+
+Known non-dialogue labels are now excluded from dialogue recognition. An empty/non-dialogue region is skipped and later regions continue, while genuine processing/alignment errors still fail without replacing existing captions. A selection containing only non-dialogue also keeps existing work. No timing is invented and no speech detector/model is changed. The module cache version advances together so deployed clients receive the correction.
+
+The full supplied clip was successfully transcribed into six word-timed segments and exported through the actual browser FFmpeg workflow. The output retains the source framing and audio duration, and decoded audio correlation at original timestamps was approximately 0.999. User footage and transcripts remain private local test artifacts and are not added to repository fixtures. Recognition wording remains subject to manual review; successful processing is not a guarantee that every word is correct.
