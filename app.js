@@ -1,8 +1,8 @@
-import {captionWorkspace} from './js/captions/workspace.js?v=speech-align-2';
-import {drawCaptions,prepareCaptionExport} from './js/captions/render.js?v=speech-align-2';
+import {captionWorkspace} from './js/captions/workspace.js?v=frame-align-1';
+import {drawCaptions,prepareCaptionExport} from './js/captions/render.js?v=frame-align-1';
 import {autoMontage, montageSettings, montageClips, shuffleMontage, MIN_MONTAGE_SECONDS, MAX_MONTAGE_SECONDS} from './js/montage.js?v=0.6.4';
 import {encodeMontage} from './js/montage-export.js?v=0.6.4';
-import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=speech-align-2';
+import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=frame-align-1';
 import {cropRect as calculateCrop} from './js/export-settings.js';
 import {ZipWorker} from './js/zip-client.js';
 
@@ -161,7 +161,7 @@ async function generateCaptions() {
     if (cancelRequested) throw Error('Transcription cancelled.');
     const segments = await new Promise((resolve, reject) => {
       transcriptionWorker = new Worker(
-        new URL('./js/captions/transcribe-worker.js?v=speech-align-2', import.meta.url),
+        new URL('./js/captions/transcribe-worker.js?v=frame-align-1', import.meta.url),
         { type: 'module' }
       );
       transcriptionWorker.onmessage = ({ data }) => {

@@ -1,0 +1,9 @@
+Word alignment model: Xenova/wav2vec2-base-960h
+Pinned ONNX revision: a19f851b3d42865797e410752b4c570c871e4825
+Converted from facebook/wav2vec2-base-960h, whose model card declares Apache-2.0.
+https://huggingface.co/Xenova/wav2vec2-base-960h
+https://huggingface.co/facebook/wav2vec2-base-960h
+The converted repository identifies the Facebook model as its base model and
+provides no separate license declaration. The upstream Apache-2.0 terms apply.
+The full Apache-2.0 license text is included in transformers-Apache-2.0.txt.
+Weights are downloaded from their public host on demand, not embedded in projects.

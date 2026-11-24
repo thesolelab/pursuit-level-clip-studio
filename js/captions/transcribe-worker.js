@@ -1,10 +1,10 @@
-import {detectSpeech} from './speech.js?v=speech-align-2';
-import { recognizeSpeechRegions } from './recognition.js?v=speech-align-2';
-let recognizer;
+import { dialogueWords, alignTranscript } from './alignment.js?v=frame-align-1';
+let recognizer, aligner;
 self.onmessage = async ({ data }) => {
   try {
-    const onProgress=message=>self.postMessage({type:'progress',message});
-    const ranges=await detectSpeech(data.audio,onProgress);
+    const onProgress = (message) =>
+      self.postMessage({ type: 'progress', message });
+
     const { pipeline, env } = await import(
       '../../vendor/captions/transformers.js'
     );
@@ -36,13 +36,31 @@ self.onmessage = async ({ data }) => {
       type: 'progress',
       message: 'Listening locally… This can take several minutes.'
     });
-    const segments = await recognizeSpeechRegions(
-      recognizer,
+    onProgress('Transcribing the full audio, including quiet dialogue…');
+    const result = await recognizer(data.audio, {
+      return_timestamps: 'word',
+      chunk_length_s: 30,
+      stride_length_s: 5
+    });
+    const words = dialogueWords(result, data.duration);
+    onProgress('Loading the local word-alignment model…');
+    aligner ||= await pipeline(
+      'automatic-speech-recognition',
+      'Xenova/wav2vec2-base-960h',
+      {
+        revision: 'a19f851b3d42865797e410752b4c570c871e4825',
+        dtype: 'q8',
+        device: 'wasm',
+        progress_callback
+      }
+    );
+    const segments = await alignTranscript(
+      aligner,
       data.audio,
+      words,
       data.start,
       data.duration,
-      ranges,
-      (message) => self.postMessage({ type: 'progress', message })
+      onProgress
     );
     self.postMessage({ type: 'complete', segments });
   } catch (error) {
