@@ -20,7 +20,7 @@ const cue = (text = 'Drive this car', start = 1, end = 4) => ({
 test('caption edits preserve word timing only when alignment remains valid', () => {
   const c = { ...cue(), timing: 'word' };
   assert.equal(correctCaption(c, 'Drive that car').timing, 'word');
-  assert.equal(correctCaption(c, 'Drive that amazing car').timing, 'estimated');
+  assert.equal(correctCaption(c, 'Drive that amazing car').timing, 'phrase');
   assert.equal(correctCaption(c, 'Drive this car', 2, 5).words[0].start, 2);
 });
 test('invalid, overlapping and mismatched captions cannot replace a project', () => {
@@ -160,47 +160,59 @@ test('recognized text survives unusable timestamp chunks instead of reporting no
   assert.equal(segments[0].end, 15);
 });
 
-test('recognition retries without timestamps when timed decoders return no words', async () => {
+test('failed word alignment retries phrase timestamps and leaves leading silence empty', async () => {
   const { recognizeCaptions } = await import('../js/captions/recognition.js');
   const modes = [];
   const segments = await recognizeCaptions(
     async (audio, options) => {
       modes.push(options.return_timestamps);
-      return options.return_timestamps === false
-        ? { text: 'Dialogue from the original video' }
-        : { text: '', chunks: [] };
+      return options.return_timestamps === 'word'
+        ? {
+            text: 'Dialogue from video',
+            chunks: [{ text: 'Dialogue', timestamp: [null, null] }]
+          }
+        : {
+            text: 'Dialogue from video',
+            chunks: [{ text: 'Dialogue from video', timestamp: [2, 4] }]
+          };
     },
     new Float32Array(16000),
-    8,
-    1
+    10,
+    8
   );
-  assert.deepEqual(modes, ['word', true, false]);
-  assert.equal(segments[0].text, 'Dialogue from the original video');
-  assert.equal(segments[0].timing, 'estimated');
-  assert.equal(segments[0].start, 8);
+  assert.deepEqual(modes, ['word', true]);
+  assert.equal(segments[0].start, 12);
+  assert.equal(segments[0].end, 14);
+  assert.equal(segments[0].timing, 'phrase');
+  const groups = captionGroups(segments, 1);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].start, 12);
+  assert.equal(groups[0].end, 14);
+  assert.equal(groups[0].words.length, 3);
 });
 
-test('a correct transcript with broken word alignment is kept without another inference', async () => {
+test('recognized text without speech timestamps is never spread across the selection', async () => {
   const { recognizeCaptions } = await import('../js/captions/recognition.js');
   let calls = 0;
-  const segments = await recognizeCaptions(
-    async () => {
-      calls++;
-      return {
-        text: 'Los Santos',
-        chunks: [{ text: 'Los', timestamp: [null, null] }]
-      };
-    },
-    new Float32Array(16000),
-    0,
-    1
+  await assert.rejects(
+    recognizeCaptions(
+      async () => {
+        calls++;
+        return {
+          text: 'Los Santos',
+          chunks: [{ text: 'Los Santos', timestamp: [null, null] }]
+        };
+      },
+      new Float32Array(16000),
+      0,
+      8
+    ),
+    /reliable speech timestamps were unavailable/
   );
-  assert.equal(calls, 1);
-  assert.equal(segments[0].text, 'Los Santos');
-  assert.equal(segments[0].timing, 'estimated');
+  assert.equal(calls, 2);
 });
 
-test('empty recognition never fabricates captions or replaces work with an empty result', async () => {
+test('empty timed recognition preserves existing work without untimed fallback', async () => {
   const { recognizeCaptions } = await import('../js/captions/recognition.js');
   let calls = 0;
   await assert.rejects(
@@ -213,9 +225,9 @@ test('empty recognition never fabricates captions or replaces work with an empty
       0,
       1
     ),
-    /model returned no words/
+    /no aligned words/
   );
-  assert.equal(calls, 3);
+  assert.equal(calls, 2);
 });
 
 test('diagnostic WAV retains the exact source range and standard mono sample rate', async () => {
@@ -227,21 +239,6 @@ test('diagnostic WAV retains the exact source range and standard mono sample rat
   assert.equal(view.getUint32(40, true), 10);
   assert.equal(view.getInt16(46, true), 16384);
   assert.equal(view.getInt16(48, true), -16384);
-});
-
-test('long transcripts without timestamps are split into valid editable segments', async () => {
-  const { recognizeCaptions } = await import('../js/captions/recognition.js');
-  const text = Array(300).fill('dialogue').join(' ');
-  const segments = await recognizeCaptions(
-    async () => ({ text, chunks: [] }),
-    new Float32Array(10),
-    5,
-    120
-  );
-  assert.equal(segments.length, 38);
-  assert.equal(segments[0].start, 5);
-  assert.equal(segments.at(-1).end, 125);
-  assert.equal(segments.map((c) => c.text).join(' '), text);
 });
 
 test('rounded caption endpoints clamp to the exact video boundary within one millisecond', () => {
@@ -276,4 +273,76 @@ test('clamping cannot leave a zero-length final word outside the video', () => {
       ),
     /word timing/
   );
+});
+
+test('phrase captions show all words together within speech boundaries in ASS', async () => {
+  const { wordAppearance } = await import('../js/captions/render.js');
+  const c = { ...cue('Drive this amazing car', 12, 14), timing: 'phrase' },
+    groups = captionGroups([c], 2),
+    group = groups[0];
+  const state = { ...defaultCaptions(), enabled: true, segments: [c] },
+    ctx = { measureText: (t) => ({ width: t.length * 20 }) };
+  for (const preset of ['pop', 'neon', 'cinematic']) {
+    const style = { ...state.style, preset };
+    const ass = animatedASS(
+      ctx,
+      { ...state, style },
+      { start: 10, end: 18 },
+      720,
+      1280
+    );
+    const events = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    assert.ok(events.length > 0);
+    assert.ok(
+      events.every((l) => {
+        const start = l.split(',')[1];
+        return start >= '0:00:02.00';
+      })
+    );
+    const lateWord = { ...c.words.at(-1), index: 3, y: 100 };
+    assert.ok(wordAppearance(lateWord, group, style, 12.2, 40).alpha > 0);
+  }
+  assert.equal(safeCaptions(state, 20).segments[0].timing, 'phrase');
+});
+
+test('speech detection preserves leading silence and separate pause boundaries', async () => {
+  const { speechRegions } = await import('../js/captions/speech.js');
+  const scores = [
+    ...Array(20).fill(0.01),
+    ...Array(10).fill(0.9),
+    ...Array(15).fill(0.02),
+    ...Array(8).fill(0.8),
+    ...Array(10).fill(0.01)
+  ];
+  const ranges = speechRegions(scores, scores.length * 512);
+  assert.equal(ranges.length, 2);
+  assert.equal(ranges[0].start, (18 * 512) / 16000);
+  assert.equal(ranges[0].end, (32 * 512) / 16000);
+  assert.equal(ranges[1].start, (43 * 512) / 16000);
+  assert.ok(ranges[0].end < ranges[1].start);
+  assert.deepEqual(speechRegions(Array(100).fill(0.01), 51200), []);
+});
+
+test('transcription keeps original source offsets when silence is skipped', async () => {
+  const { recognizeSpeechRegions } = await import(
+    '../js/captions/recognition.js'
+  );
+  const segments = await recognizeSpeechRegions(
+    async (audio, options) => ({
+      text: 'Speech',
+      chunks: [{ text: 'Speech', timestamp: [0, audio.length / 16000] }]
+    }),
+    new Float32Array(160000),
+    30,
+    10,
+    [
+      { start: 2, end: 3 },
+      { start: 7, end: 8 }
+    ]
+  );
+  assert.equal(segments[0].start, 32);
+  assert.equal(segments[0].end, 33);
+  assert.equal(segments[1].start, 37);
+  assert.equal(segments[1].end, 38);
+  assert.equal(segments[0].timing, 'word');
 });

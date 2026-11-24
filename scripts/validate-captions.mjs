@@ -1,12 +1,13 @@
 // Optional slow, real-engine smoke test. Run against a prepared local server.
 import { chromium } from 'playwright';
-import { mkdir, copyFile } from 'node:fs/promises';
+import { mkdir, copyFile, readFile } from 'node:fs/promises';
 const out =
   process.env.CAPTION_TEST_OUTPUT ||
   new URL('../test-results/captions/', import.meta.url).pathname;
 await mkdir(out, { recursive: true });
 await copyFile(
-  new URL('../tests/fixtures/narration.mp4', import.meta.url),
+  process.env.CAPTION_TEST_SOURCE ||
+    new URL('../tests/fixtures/narration.mp4', import.meta.url),
   out + '/narration.mp4'
 );
 const browser = await chromium.launch({
@@ -49,16 +50,41 @@ console.log('ROWS', await page.locator('.caption-row').count());
 await page.screenshot({ path: out + '/editor.png', fullPage: true });
 if (!(await page.locator('.caption-row').count()))
   throw Error('No transcript generated: ' + last);
-await page.waitForFunction(()=>Number.isFinite(document.querySelector('#captionAudio').duration));
-const audioDuration=await page.locator('#captionAudio').evaluate(a=>a.duration);
-const sourceDuration=await page.locator('#video').evaluate(v=>v.duration);
-if(Math.abs(audioDuration-sourceDuration)>.1)throw Error('Extracted audio preview duration differs from the selected range.');
-await page.locator('#captionAudio').evaluate(async a=>{a.muted=true;await a.play();});await page.waitForTimeout(300);
-if(await page.locator('#captionAudio').evaluate(a=>a.currentTime)<.1)throw Error('Extracted audio preview could not play.');
-console.log('Local extracted audio preview decoded and played.',audioDuration);
+await page.waitForFunction(() =>
+  Number.isFinite(document.querySelector('#captionAudio').duration)
+);
+const audioDuration = await page
+  .locator('#captionAudio')
+  .evaluate((a) => a.duration);
+const sourceDuration = await page.locator('#video').evaluate((v) => v.duration);
+if (Math.abs(audioDuration - sourceDuration) > 0.1)
+  throw Error(
+    'Extracted audio preview duration differs from the selected range.'
+  );
+await page.locator('#captionAudio').evaluate(async (a) => {
+  a.muted = true;
+  await a.play();
+});
+await page.waitForTimeout(300);
+if ((await page.locator('#captionAudio').evaluate((a) => a.currentTime)) < 0.1)
+  throw Error('Extracted audio preview could not play.');
+console.log('Local extracted audio preview decoded and played.', audioDuration);
 const save = page.waitForEvent('download');
 await page.locator('#saveProject').click();
 await (await save).saveAs(out + '/generated-project.json');
+if (process.env.CAPTION_EXPECTED_SPEECH_START) {
+  const project = JSON.parse(
+    await readFile(out + '/generated-project.json', 'utf8')
+  );
+  const onset = project.captions.segments[0]?.start,
+    expected = Number(process.env.CAPTION_EXPECTED_SPEECH_START);
+  if (!Number.isFinite(onset) || Math.abs(onset - expected) > 0.2)
+    throw Error(
+      `Caption onset ${onset} differs from expected speech onset ${expected}.`
+    );
+  console.log('Caption onset matches the known speech onset:', onset);
+}
+
 if (uploads.length)
   throw Error('Unexpected upload requests: ' + uploads.join(', '));
 console.log('No audio/transcript upload requests observed.');

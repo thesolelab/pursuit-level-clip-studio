@@ -116,7 +116,9 @@ export function safeCaptions(raw, duration = Infinity) {
       const text = String(cue.text || '').trim();
       if (end <= start || !text || text.length > 800)
         throw Error(`Invalid caption segment ${i + 1}.`);
-      const timing = cue.timing === 'word' ? 'word' : 'estimated';
+      const timing = ['word', 'phrase'].includes(cue.timing)
+        ? cue.timing
+        : 'estimated';
       const tokens = wordsOf(text);
       let words = Array.isArray(cue.words)
         ? cue.words
@@ -160,7 +162,11 @@ export function correctCaption(cue, text, start = cue.start, end = cue.end) {
     text: tokens.join(' '),
     start,
     end,
-    timing: preserve ? cue.timing : 'estimated',
+    timing: preserve
+      ? cue.timing
+      : start === cue.start && end === cue.end && cue.timing !== 'estimated'
+        ? 'phrase'
+        : 'estimated',
     words: preserve
       ? cue.words.map((w, i) => ({ ...w, text: tokens[i] }))
       : estimatedWords(text, start, end)
@@ -255,6 +261,16 @@ export function srt(segments, start = 0, end = Infinity) {
 }
 export function captionGroups(segments, maxWords) {
   return segments.flatMap((cue) => {
+    if (cue.timing === 'phrase')
+      return [
+        {
+          start: cue.start,
+          end: cue.end,
+          words: cue.words,
+          phrase: true,
+          maxWords
+        }
+      ];
     const groups = [];
     for (let i = 0; i < cue.words.length; i += maxWords) {
       const words = cue.words.slice(i, i + maxWords);

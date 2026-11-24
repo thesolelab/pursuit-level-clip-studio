@@ -1,7 +1,10 @@
-import { recognizeCaptions } from './recognition.js';
+import {detectSpeech} from './speech.js?v=speech-align-1';
+import { recognizeSpeechRegions } from './recognition.js?v=speech-align-1';
 let recognizer;
 self.onmessage = async ({ data }) => {
   try {
+    const onProgress=message=>self.postMessage({type:'progress',message});
+    const ranges=await detectSpeech(data.audio,onProgress);
     const { pipeline, env } = await import(
       '../../vendor/captions/transformers.js'
     );
@@ -33,11 +36,12 @@ self.onmessage = async ({ data }) => {
       type: 'progress',
       message: 'Listening locally… This can take several minutes.'
     });
-    const segments = await recognizeCaptions(
+    const segments = await recognizeSpeechRegions(
       recognizer,
       data.audio,
       data.start,
       data.duration,
+      ranges,
       (message) => self.postMessage({ type: 'progress', message })
     );
     self.postMessage({ type: 'complete', segments });

@@ -521,3 +521,18 @@ test('generating captions at a rounded source endpoint uses the exact media end'
  assert.equal(project.captions.segments[0].words.at(-1).end,1.23456);
  assert.equal(project.captions.segments[0].timing,'word');
 });
+
+test('speech phrase captions stay off during leading silence and preserve speech bounds after corrections',async t=>{
+ const page=await editor(t,true);
+ await page.evaluate(()=>{
+  const Original=window.Worker;window.Worker=class{constructor(url,options){if(String(url).includes('transcribe-worker'))return this;return new Original(url,options);}postMessage(){setTimeout(()=>this.onmessage({data:{type:'complete',segments:[{start:.5,end:.95,text:'Spoken words',timing:'phrase',words:[{text:'Spoken',start:.5,end:.725},{text:'words',start:.725,end:.95}]}]}}),0);}terminate(){}};
+ });
+ await page.locator('#generateCaptions').click();await page.waitForFunction(()=>document.querySelector('#captionStatus').textContent.includes('speech phrase timestamps'));
+ assert.match(await page.locator('.caption-row strong').textContent(),/Speech phrase timing/);
+ await page.waitForFunction(()=>Array.from(document.fonts).some(f=>f.family==='PLCaption-anton'&&f.status==='loaded'));
+ const brightPixels=async time=>{await page.locator('#video').evaluate((v,time)=>{v.currentTime=time;},time);await page.waitForFunction(time=>!document.querySelector('#video').seeking&&Math.abs(document.querySelector('#video').currentTime-time)<.01,time);return page.locator('#cropCanvas').evaluate(c=>{const data=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let count=0;for(let i=0;i<data.length;i+=4)if(data[i]>180&&data[i+1]>180)count++;return count;});};
+ assert.equal(await brightPixels(.2),0);assert.ok(await brightPixels(.8)>0);
+ await page.locator('.caption-row textarea').fill('Corrected spoken vehicle names');await page.locator('.caption-row textarea').press('Tab');
+ const save=page.waitForEvent('download');await page.locator('#saveProject').click();const project=JSON.parse((await textDownload(await save)).toString());
+ assert.equal(project.captions.segments[0].timing,'phrase');assert.equal(project.captions.segments[0].start,.5);assert.equal(project.captions.segments[0].end,.95);
+});
