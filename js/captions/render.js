@@ -73,7 +73,10 @@ export function layout(ctx, group, style, width, height) {
     totals = [0];
   widths.forEach((w, i) => {
     let n = lines.length - 1;
-    if (totals[n] + (lines[n].length ? space : 0) + w > available) {
+    if (
+      (group.phrase && lines[n].length >= group.maxWords) ||
+      totals[n] + (lines[n].length ? space : 0) + w > available
+    ) {
       lines.push([]);
       totals.push(0);
       n++;
@@ -120,6 +123,7 @@ export function layout(ctx, group, style, width, height) {
   return result;
 }
 export function wordAppearance(word, group, style, t, size) {
+  if (group.phrase) word = { ...word, start: group.start, end: group.end };
   let scale = 1,
     alpha = 1,
     y = word.y,
@@ -131,9 +135,9 @@ export function wordAppearance(word, group, style, t, size) {
       0.15 *
         style.intensity *
         (1 - clamp(((t - word.start) * style.speed) / 0.12, 0, 1));
-    if (t < word.end) color = style.highlight;
+    if (!group.phrase && t < word.end) color = style.highlight;
   } else if (style.preset === 'neon') {
-    if (t >= word.start && t < word.end)
+    if (!group.phrase && t >= word.start && t < word.end)
       color = mix(
         style.color,
         style.highlight,
@@ -224,17 +228,18 @@ export function animatedASS(ctx, state, clip, width, height) {
     for (const word of items) {
       const start = Math.max(
           clip.start,
-          s.preset === 'pop' ? word.start : group.start
+          s.preset === 'pop' && !group.phrase ? word.start : group.start
         ),
         end = Math.min(clip.end, group.end);
       // Small linear intervals also reproduce clipped animation phases without restarting them.
+      const animationStart = group.phrase ? group.start : word.start;
       const cuts = [
         start,
         end,
         word.start,
         word.end,
-        word.start + 0.12 / s.speed,
-        word.start + 0.06 / s.speed,
+        animationStart + 0.12 / s.speed,
+        animationStart + 0.06 / s.speed,
         group.start + 0.15 / s.speed
       ]
         .filter((t) => t >= start && t <= end)

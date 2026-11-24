@@ -39,7 +39,7 @@ for (const [preset, font] of [
 ]) {
   console.log('RENDER', preset, font);
   const data = await page.evaluate(
-    async ({ preset, font }) => {
+    async ({ preset, font, phrase }) => {
       const { defaultCaptions, estimatedWords, PRESETS } = await import(
         '/js/captions/model.js'
       );
@@ -54,7 +54,7 @@ for (const [preset, font] of [
             start: 0.5,
             end: 3,
             text: 'Drive this amazing car',
-            timing: 'estimated',
+            timing: phrase ? 'phrase' : 'estimated',
             words: estimatedWords('Drive this amazing car', 0.5, 3)
           }
         ]
@@ -109,7 +109,7 @@ for (const [preset, font] of [
         fontLogs: renderLogs.filter((l) => /fontselect/.test(l)).slice(-4)
       };
     },
-    { preset, font }
+    { preset, font, phrase: process.env.CAPTION_TEST_PHRASE === '1' }
   );
   await writeFile(`${out}/${preset}-${font}.mp4`, new Uint8Array(data.bytes));
   await writeFile(

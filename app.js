@@ -188,7 +188,7 @@ async function generateCaptions() {
     if (cancelRequested) throw Error('Transcription cancelled.');
     captions.replaceRange(segments, range.start, range.end);
     captions.message(
-      'Captions generated. Review text and timing before exporting.'
+      segments.some(c=>c.timing==='phrase') ? 'Captions generated using speech phrase timestamps. Phrases appear together; word-by-word alignment was unavailable.' : 'Captions generated with model word timing. Review synchronization before exporting.'
     );
   } catch (e) {
     captions.message(
