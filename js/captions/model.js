@@ -143,7 +143,20 @@ export function safeCaptions(raw, duration = Infinity) {
           end: Math.min(end, word.end)
         };
       });
-      return { id: i + 1, start, end, text, timing, words };
+      if (
+        cue.needsAlignment !== undefined &&
+        typeof cue.needsAlignment !== 'boolean'
+      )
+        throw Error('Invalid caption timing-update flag.');
+      return {
+        id: i + 1,
+        start,
+        end,
+        text,
+        timing,
+        words,
+        ...(cue.needsAlignment ? { needsAlignment: true } : {})
+      };
     })
     .sort((a, b) => a.start - b.start);
   for (let i = 1; i < segments.length; i++)
@@ -162,11 +175,11 @@ export function correctCaption(cue, text, start = cue.start, end = cue.end) {
     text: tokens.join(' '),
     start,
     end,
-    timing: preserve
-      ? cue.timing
-      : start === cue.start && end === cue.end && cue.timing !== 'estimated'
-        ? 'phrase'
-        : 'estimated',
+    timing: preserve ? cue.timing : 'estimated',
+    ...(cue.needsAlignment ||
+    (cue.timing !== 'estimated' && (!preserve || tokens.join(' ') !== cue.text))
+      ? { needsAlignment: true }
+      : {}),
     words: preserve
       ? cue.words.map((w, i) => ({ ...w, text: tokens[i] }))
       : estimatedWords(text, start, end)

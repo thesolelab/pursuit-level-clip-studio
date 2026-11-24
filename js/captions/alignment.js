@@ -2,7 +2,7 @@ import {
   safeCaptions,
   defaultCaptions,
   wordsOf
-} from './model.js?v=frame-align-1';
+} from './model.js?v=edit-align-1';
 
 const SMALL = [
   'ZERO',
@@ -224,9 +224,12 @@ export async function alignTranscript(
   words,
   sourceStart,
   duration,
-  onProgress = () => {}
+  onProgress = () => {},
+  { singleWindow = false } = {}
 ) {
-  const windows = alignmentWindows(words, duration),
+  const windows = singleWindow
+      ? [{ words, start: 0, end: duration }]
+      : alignmentWindows(words, duration),
     aligned = [];
   for (let i = 0; i < windows.length; i++) {
     const window = windows[i],
@@ -303,4 +306,62 @@ export async function alignTranscript(
     { ...defaultCaptions(), segments },
     sourceStart + duration
   ).segments;
+}
+
+// Edited wording is supplied by the creator. Do not run speech recognition or
+// overwrite it. Each cue uses bounded neighbor-safe context from the source.
+export async function realignEditedCaptions(
+  aligner,
+  audio,
+  sourceStart,
+  duration,
+  cues,
+  onProgress = () => {}
+) {
+  const updates = [];
+  for (let i = 0; i < cues.length; i++) {
+    const cue = cues[i];
+    const first = Math.max(
+        0,
+        Math.floor((cue.contextStart - sourceStart) * 16000)
+      ),
+      last = Math.min(
+        audio.length,
+        Math.ceil((cue.contextEnd - sourceStart) * 16000)
+      );
+    if (last <= first || (last - first) / 16000 > 18)
+      throw Error(
+        'Split captions longer than 18 seconds before updating their word timing.'
+      );
+    onProgress(`Updating edited caption ${i + 1}/${cues.length}…`);
+    const offset = sourceStart + first / 16000;
+    const words = wordsOf(cue.text).map((text) => ({
+      text,
+      start: cue.start - offset,
+      end: cue.end - offset
+    }));
+    const aligned = await alignTranscript(
+      aligner,
+      audio.subarray(first, last),
+      words,
+      offset,
+      (last - first) / 16000,
+      onProgress,
+      { singleWindow: true }
+    );
+    const alignedWords = aligned.flatMap((c) => c.words);
+    if (alignedWords.map((w) => w.text).join(' ') !== cue.text)
+      throw Error(
+        'The corrected wording could not be preserved. Your edits were kept.'
+      );
+    updates.push({
+      ...cue,
+      start: alignedWords[0].start,
+      end: alignedWords.at(-1).end,
+      words: alignedWords,
+      timing: 'word',
+      needsAlignment: false
+    });
+  }
+  return updates;
 }

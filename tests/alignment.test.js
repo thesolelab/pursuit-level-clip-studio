@@ -96,3 +96,44 @@ test('alignment preserves display words, internal number tokens, and the source 
   assert.equal(result[0].words[0].start, 10.04);
   assert.equal(result[0].timing, 'word');
 });
+
+test('edited captions align supplied text without recognition and clear pending timing atomically', async () => {
+  const { realignEditedCaptions } = await import('../js/captions/alignment.js');
+  const chars = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    encode = (text) => [...text].map((c) => chars.indexOf(c) + 1),
+    target = encode('A B');
+  const ids = [0, 0, ...target.flatMap((id) => [id, 0]), 0],
+    classes = chars.length + 1,
+    data = new Float32Array(ids.length * classes).fill(-12);
+  ids.forEach((id, t) => (data[t * classes + id] = 12));
+  const model = Object.assign(
+    async () => ({
+      logits: { dims: [1, ids.length, classes], data, dispose() {} }
+    }),
+    {
+      config: { pad_token_id: 0, unk_token_id: 99, inputs_to_logits_ratio: 320 }
+    }
+  );
+  const updates = await realignEditedCaptions(
+    { tokenizer: { encode }, processor: async () => ({}), model },
+    new Float32Array(32000),
+    10,
+    2,
+    [
+      {
+        id: 7,
+        text: 'A B',
+        start: 10,
+        end: 11,
+        contextStart: 10,
+        contextEnd: 12,
+        needsAlignment: true
+      }
+    ]
+  );
+  assert.equal(updates[0].id, 7);
+  assert.equal(updates[0].text, 'A B');
+  assert.equal(updates[0].timing, 'word');
+  assert.equal(updates[0].needsAlignment, false);
+  assert.equal(updates[0].words[0].start, 10.04);
+});
