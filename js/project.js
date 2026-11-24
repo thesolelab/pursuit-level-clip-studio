@@ -1,4 +1,4 @@
-import {safeCaptions} from './captions/model.js';
+import {safeCaptions} from './captions/model.js?v=speech-align-1';
 import {montageSettings} from './montage.js?v=0.6.4';
 
 export const MAX_CLIPS = 500;

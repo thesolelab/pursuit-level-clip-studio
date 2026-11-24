@@ -4,7 +4,7 @@ import {
   defaultCaptions,
   wordsOf,
   estimatedWords
-} from './model.js';
+} from './model.js?v=speech-align-1';
 
 // Never turn missing alignment into invented source-wide speech timing.
 export async function recognizeCaptions(

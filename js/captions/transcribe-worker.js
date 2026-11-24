@@ -1,5 +1,5 @@
-import {detectSpeech} from './speech.js';
-import { recognizeSpeechRegions } from './recognition.js';
+import {detectSpeech} from './speech.js?v=speech-align-1';
+import { recognizeSpeechRegions } from './recognition.js?v=speech-align-1';
 let recognizer;
 self.onmessage = async ({ data }) => {
   try {
