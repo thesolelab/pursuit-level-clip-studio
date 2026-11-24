@@ -117,3 +117,11 @@ This requires an additional quantized model download on first use (roughly 220 M
 The supplied gameplay clip now generates the opening line starting at 5.74 seconds rather than 8.448 seconds; the game's visible opening subtitle appears around 5.75 seconds, consistent with the creator's approximately six-second reference. The new full-context run retained 54 words in seven word-timed segments versus the earlier six sparse segments. The test output is private and not included in repository fixtures. This is a measured reference-case improvement, not a guarantee that every line in every recording is perfectly recognized or aligned.
 
 Older speech-region helper code and assets remain for regression coverage but are no longer used by the default worker. Previously saved timings require regeneration.
+
+### Updating timing after caption edits
+
+The Captions toolbar now includes **Update word timing**. It aligns edited cues with the source audio using the existing cached alignment model, without running Whisper or replacing creator corrections. When generated captions have pending edits, only those cues are processed; otherwise the action can align existing/manual captions. Neighbor-safe audio context keeps updated cues within their available source interval. Individual cues longer than 18 seconds should be split first; one update batch is limited to a ten-minute source span.
+
+Text and timing edits retain the selected global font, preset, colors, outline, shadow, placement, intensity, speed and visibility. Known timing is retained where possible; changed word counts use an explicitly approximate animated preview instead of silently becoming static phrase captions. Pending timing is saved in project JSON. MP4 export with enabled pending captions asks the creator to update timing first. Plain SRT and exports with captions disabled remain available.
+
+All requested updates are validated before replacing caption timing. Cancellation, failed alignment, invalid results or text conflicts preserve the corrected text, pending flags and styling. The timing-only worker path loads only the existing alignment model; no new model or dependency is added. After success, the captions return to word timing and word highlighting/pop effects use the corrected alignment in both preview and export.

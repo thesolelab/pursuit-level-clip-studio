@@ -6,18 +6,19 @@ import {
   correctCaption,
   estimatedWords,
   srt
-} from './model.js?v=frame-align-1';
+} from './model.js?v=edit-align-1';
 import { CAPTION_FONTS } from './fonts.js';
-import { ensureCaptionFont } from './render.js?v=frame-align-1';
+import { ensureCaptionFont } from './render.js?v=edit-align-1';
 export function captionWorkspace(
   host,
-  { video, range, onChange, onGenerate, download }
+  { video, range, onChange, onGenerate, onRealign, download }
 ) {
-  let audioURL = null;
+  let audioURL = null,
+    workingMode = 'transcribe';
   let state = defaultCaptions(),
     page = 0;
   const pageSize = 40;
-  host.innerHTML = `<h2>Captions <span class="pill">DEVELOPMENT</span></h2><p class="muted">Generate English captions for the selected range. Your audio stays on this device. First use downloads roughly 220 MB of model and processing files; allow several minutes on a desktop. Review names and timing before exporting.</p><div class="actions"><button type="button" id="generateCaptions">Generate captions</button><button type="button" id="cancelCaptions" hidden>Cancel transcription</button><button type="button" id="addCaption">Add at playhead</button><button type="button" id="downloadSrt">Download range SRT</button></div><p id="captionStatus" role="status" aria-live="polite"></p><div id="captionAudioPreview" hidden><label for="captionAudio">Audio used for captions (selected source range)</label><audio id="captionAudio" controls preload="metadata"></audio><p class="muted">This is the audio sent to local speech recognition. It stays on your device. Muting the exported video does not mute caption generation.</p></div><progress id="captionProgress" hidden aria-label="Transcription progress"></progress><label class="check-label"><input type="checkbox" id="captionEnabled"> Show captions in preview and MP4 exports</label><div class="caption-style"></div><p class="muted">Times below are seconds in the source video. Changing timing or the number of words estimates word timing again. SRT covers the selected range and starts at zero; animation appears in MP4 only.</p><div class="actions"><button type="button" id="captionPrevious">Previous captions</button><output id="captionPage"></output><button type="button" id="captionNext">Next captions</button></div><div class="caption-rows"></div>`;
+  host.innerHTML = `<h2>Captions <span class="pill">DEVELOPMENT</span></h2><p class="muted">Generate English captions for the selected range. Your audio stays on this device. First use downloads roughly 220 MB of model and processing files; allow several minutes on a desktop. Review names and timing before exporting.</p><div class="actions"><button type="button" id="generateCaptions">Generate captions</button><button type="button" id="realignCaptions">Update word timing</button><button type="button" id="cancelCaptions" hidden>Cancel transcription</button><button type="button" id="addCaption">Add at playhead</button><button type="button" id="downloadSrt">Download range SRT</button></div><p id="captionStatus" role="status" aria-live="polite"></p><div id="captionAudioPreview" hidden><label for="captionAudio">Audio used for captions (selected source range)</label><audio id="captionAudio" controls preload="metadata"></audio><p class="muted">This is the audio sent to local speech recognition. It stays on your device. Muting the exported video does not mute caption generation.</p></div><progress id="captionProgress" hidden aria-label="Transcription progress"></progress><label class="check-label"><input type="checkbox" id="captionEnabled"> Show captions in preview and MP4 exports</label><div class="caption-style"></div><p class="muted">Times below are seconds in the source video. After changing word count or timing, click Update word timing to match your corrections to the audio. Animation previews are approximate until then. SRT covers the selected range and starts at zero; animation appears in MP4 only.</p><div class="actions"><button type="button" id="captionPrevious">Previous captions</button><output id="captionPage"></output><button type="button" id="captionNext">Next captions</button></div><div class="caption-rows"></div>`;
   const find = (s) => host.querySelector(s),
     message = (text) => (find('#captionStatus').textContent = text);
   const styleHost = find('.caption-style'),
@@ -104,11 +105,16 @@ export function captionWorkspace(
     };
     return b;
   }
-  function updateSegments(segments) {
-    apply({ ...state, enabled: true, segments });
+  function updateSegments(segments, enable = false) {
+    apply({ ...state, enabled: enable ? true : state.enabled, segments });
   }
   function render() {
     find('#captionEnabled').checked = state.enabled;
+    find('#realignCaptions').disabled = !state.segments.length;
+    const pending = state.segments.filter((c) => c.needsAlignment).length;
+    find('#realignCaptions').textContent = pending
+      ? `Update word timing (${pending} edited)`
+      : 'Update word timing';
     for (const [key, , ,] of controls) {
       const el = find('#caption-' + key);
       if (el.type === 'checkbox') el.checked = state.style[key];
@@ -132,7 +138,7 @@ export function captionWorkspace(
         const row = document.createElement('div');
         row.className = 'caption-row';
         const label = document.createElement('strong');
-        label.textContent = `${index + 1} · ${cue.timing === 'word' ? 'Model word timing' : cue.timing === 'phrase' ? 'Speech phrase timing (whole phrase shown together)' : 'Estimated word timing — manually review synchronization'}`;
+        label.textContent = `${index + 1} · ${cue.needsAlignment ? 'Timing needs update — preview is approximate' : cue.timing === 'word' ? 'Model word timing' : cue.timing === 'phrase' ? 'Speech phrase timing (whole phrase shown together)' : 'Estimated word timing — manually review synchronization'}`;
         const text = document.createElement('textarea');
         text.value = cue.text;
         text.maxLength = 800;
@@ -235,21 +241,28 @@ export function captionWorkspace(
   find('#captionEnabled').onchange = (e) =>
     apply({ ...state, enabled: e.target.checked });
   find('#generateCaptions').onclick = onGenerate;
+  find('#realignCaptions').onclick = () => {
+    const pending = state.segments.filter((c) => c.needsAlignment);
+    onRealign((pending.length ? pending : state.segments).map((c) => c.id));
+  };
   find('#addCaption').onclick = () => {
     try {
       if (!Number.isFinite(video.duration)) throw Error('Load a video first.');
       const start = video.currentTime,
         end = Math.min(video.duration, start + 2);
-      updateSegments([
-        ...state.segments,
-        {
-          start,
-          end,
-          text: 'New caption',
-          timing: 'estimated',
-          words: estimatedWords('New caption', start, end)
-        }
-      ]);
+      updateSegments(
+        [
+          ...state.segments,
+          {
+            start,
+            end,
+            text: 'New caption',
+            timing: 'estimated',
+            words: estimatedWords('New caption', start, end)
+          }
+        ],
+        true
+      );
     } catch (e) {
       message(e.message);
     }
@@ -292,10 +305,38 @@ export function captionWorkspace(
     },
     audio: setAudio,
     message,
-    progress: (text, working) => {
+    progress: (text, working, mode) => {
+      if (mode) workingMode = mode;
+      find('#cancelCaptions').textContent =
+        workingMode === 'realign'
+          ? 'Cancel timing update'
+          : 'Cancel transcription';
       message(text);
       find('#captionProgress').hidden = !working;
       find('#cancelCaptions').hidden = !working;
+    },
+    replaceAligned: (updates, expectedIds) => {
+      const replacements = new Map(updates.map((c) => [c.id, c]));
+      if (
+        replacements.size !== updates.length ||
+        updates.length !== expectedIds.length ||
+        expectedIds.some((id) => !replacements.has(id)) ||
+        updates.some(
+          (c) =>
+            !state.segments.some(
+              (old) => old.id === c.id && old.text === c.text
+            )
+        )
+      )
+        throw Error(
+          'Caption text changed during alignment. Your edits were kept.'
+        );
+      apply({
+        ...state,
+        segments: state.segments.map((c) =>
+          replacements.has(c.id) ? replacements.get(c.id) : c
+        )
+      });
     },
     replaceRange: (segments, start, end) =>
       apply({

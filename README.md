@@ -87,3 +87,5 @@ Validate actual MP4 playback, audio, crop positioning, and ZIP imports into CapC
 ## Automatic captions — development branch
 
 The optional Captions workspace generates English captions locally, supports corrections and SRT downloads, and burns animated captions into individual, ZIP, and montage MP4 exports. See [caption development and validation notes](docs/auto-captions-development.md). This feature is not a completed release; CapCut and device validation remain open.
+
+After correcting generated captions, click **Update word timing** in Captions to align the edited words with the source audio. The operation preserves your font, animation, colors and placement. Edited captions show a timing-update warning until it succeeds; save the project to keep those pending edits.

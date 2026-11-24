@@ -1,8 +1,8 @@
-import {captionWorkspace} from './js/captions/workspace.js?v=frame-align-1';
-import {drawCaptions,prepareCaptionExport} from './js/captions/render.js?v=frame-align-1';
+import {captionWorkspace} from './js/captions/workspace.js?v=edit-align-1';
+import {drawCaptions,prepareCaptionExport} from './js/captions/render.js?v=edit-align-1';
 import {autoMontage, montageSettings, montageClips, shuffleMontage, MIN_MONTAGE_SECONDS, MAX_MONTAGE_SECONDS} from './js/montage.js?v=0.6.4';
 import {encodeMontage} from './js/montage-export.js?v=0.6.4';
-import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=frame-align-1';
+import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=edit-align-1';
 import {cropRect as calculateCrop} from './js/export-settings.js';
 import {ZipWorker} from './js/zip-client.js';
 
@@ -89,6 +89,7 @@ const captions = captionWorkspace($('captionsWorkspace'), {
   range: selection,
   download: downloadBlob,
   onGenerate: generateCaptions,
+  onRealign: (ids) => processCaptionJob(ids),
   onChange: (dirty) => {
     if (dirty) {
       projectDirty = true;
@@ -97,20 +98,55 @@ const captions = captionWorkspace($('captionsWorkspace'), {
     drawCrop();
   }
 });
-async function generateCaptions() {
+function generateCaptions() {
+  return processCaptionJob();
+}
+async function processCaptionJob(ids = null) {
   if (busy || loading) return;
-  let range;
+  let range,
+    targets = null;
+  const realigning = ids !== null;
   try {
-    range = selection();
+    if (realigning) {
+      if (!sourceFile || !Number.isFinite(video.duration))
+        throw Error('Load the source video before updating timing.');
+      const segments = captions.get().segments;
+      targets = segments.flatMap((cue, index) =>
+        ids.includes(cue.id)
+          ? [
+              {
+                ...structuredClone(cue),
+                contextStart: Math.max(
+                  0,
+                  segments[index - 1]?.end || 0,
+                  cue.start - 0.5
+                ),
+                contextEnd: Math.min(
+                  video.duration,
+                  segments[index + 1]?.start ?? video.duration,
+                  cue.end + 0.5
+                )
+              }
+            ]
+          : []
+      );
+      if (!targets.length)
+        throw Error('Add or edit captions before updating word timing.');
+      range = {
+        start: Math.min(...targets.map((c) => c.contextStart)),
+        end: Math.max(...targets.map((c) => c.contextEnd))
+      };
+    } else range = selection();
     if (range.end - range.start > 600)
       throw Error(
-        'Select ten minutes or less for local transcription. Short ranges use less memory.'
+        'Process captions spanning ten minutes or less at a time. Short ranges use less memory.'
       );
   } catch (e) {
     captions.message(e.message);
     return;
   }
   if (
+    !realigning &&
     captions
       .get()
       .segments.some((c) => c.end > range.start && c.start < range.end) &&
@@ -123,7 +159,13 @@ async function generateCaptions() {
   lockWorkspace(true);
   $('cancelExport').hidden = true;
   captions.audio(null);
-  captions.progress('Preparing local audio…', true);
+  captions.progress(
+    realigning
+      ? 'Preparing audio for your edited captions…'
+      : 'Preparing local audio…',
+    true,
+    realigning ? 'realign' : 'transcribe'
+  );
   let source, engine;
   try {
     engine = await getFFmpeg();
@@ -161,7 +203,10 @@ async function generateCaptions() {
     if (cancelRequested) throw Error('Transcription cancelled.');
     const segments = await new Promise((resolve, reject) => {
       transcriptionWorker = new Worker(
-        new URL('./js/captions/transcribe-worker.js?v=frame-align-1', import.meta.url),
+        new URL(
+          './js/captions/transcribe-worker.js?v=edit-align-1',
+          import.meta.url
+        ),
         { type: 'module' }
       );
       transcriptionWorker.onmessage = ({ data }) => {
@@ -181,19 +226,39 @@ async function generateCaptions() {
         { once: true }
       );
       transcriptionWorker.postMessage(
-        { audio, start: range.start, duration: range.end - range.start },
+        {
+          audio,
+          start: range.start,
+          duration: range.end - range.start,
+          mode: realigning ? 'realign' : 'transcribe',
+          cues: targets
+        },
         [audio.buffer]
       );
     });
     if (cancelRequested) throw Error('Transcription cancelled.');
-    captions.replaceRange(segments, range.start, range.end);
-    captions.message(
-      segments.some(c=>c.timing==='phrase') ? 'Captions generated using speech phrase timestamps. Phrases appear together; word-by-word alignment was unavailable.' : 'Captions generated with model word timing. Review synchronization before exporting.'
-    );
+    if (realigning) {
+      captions.replaceAligned(
+        segments,
+        targets.map((c) => c.id)
+      );
+      captions.message(
+        'Word timing updated. Your corrections, style and animations were kept.'
+      );
+    } else {
+      captions.replaceRange(segments, range.start, range.end);
+      captions.message(
+        segments.some((c) => c.timing === 'phrase')
+          ? 'Captions generated using speech phrase timestamps. Phrases appear together; word-by-word alignment was unavailable.'
+          : 'Captions generated with model word timing. Review synchronization before exporting.'
+      );
+    }
   } catch (e) {
     captions.message(
       cancelRequested
-        ? 'Transcription cancelled. Existing captions were kept.'
+        ? realigning
+          ? 'Timing update cancelled. Your edits and styling were kept.'
+          : 'Transcription cancelled. Existing captions were kept.'
         : e.message
     );
     if (engine && !cancelRequested) {
@@ -882,6 +947,7 @@ async function exportClips(selected, forceZip = false, montage = null) {
     if (montage && editorDirty && editingId === null) throw Error('Add your current range as a clip before exporting the montage.');
     savePendingEdits();
     if (montage) selected = montageClips(selected, montage, video.duration);
+    if(captions.get().enabled&&captions.get().segments.some(c=>c.needsAlignment&&selected.some(clip=>c.end>clip.start&&c.start<clip.end)))throw Error('Click Update word timing for edited captions before exporting with animated captions.');
   }
   catch (error) { return reportExport(error.message, 0); }
   if (sourceFile.size > 450 * 1048576 && !confirm('This source file is over 450 MB. Browser-based encoding may run out of memory or crash. Continue?')) return;

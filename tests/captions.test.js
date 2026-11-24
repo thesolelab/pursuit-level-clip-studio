@@ -20,7 +20,7 @@ const cue = (text = 'Drive this car', start = 1, end = 4) => ({
 test('caption edits preserve word timing only when alignment remains valid', () => {
   const c = { ...cue(), timing: 'word' };
   assert.equal(correctCaption(c, 'Drive that car').timing, 'word');
-  assert.equal(correctCaption(c, 'Drive that amazing car').timing, 'phrase');
+  assert.equal(correctCaption(c, 'Drive that amazing car').timing, 'estimated');
   assert.equal(correctCaption(c, 'Drive this car', 2, 5).words[0].start, 2);
 });
 test('invalid, overlapping and mismatched captions cannot replace a project', () => {
@@ -442,5 +442,29 @@ test('skipping nonspeech never hides a genuine speech-alignment failure', async 
       ]
     ),
     /reliable speech timestamps/
+  );
+});
+
+test('word-count edits retain animated preview timing and persist a pending alignment flag', () => {
+  const original = { ...cue('Original words', 1, 2), timing: 'word' };
+  const edited = correctCaption(original, 'Corrected additional words');
+  assert.equal(edited.timing, 'estimated');
+  assert.equal(edited.needsAlignment, true);
+  assert.equal(edited.words.length, 3);
+  const restored = safeCaptions(
+    { ...defaultCaptions(), segments: [edited] },
+    3
+  );
+  assert.equal(restored.segments[0].needsAlignment, true);
+  assert.throws(
+    () =>
+      safeCaptions(
+        {
+          ...defaultCaptions(),
+          segments: [{ ...edited, needsAlignment: 'yes' }]
+        },
+        3
+      ),
+    /timing-update flag/
   );
 });

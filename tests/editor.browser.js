@@ -534,5 +534,46 @@ test('speech phrase captions stay off during leading silence and preserve speech
  assert.equal(await brightPixels(.2),0);assert.ok(await brightPixels(.8)>0);
  await page.locator('.caption-row textarea').fill('Corrected spoken vehicle names');await page.locator('.caption-row textarea').press('Tab');
  const save=page.waitForEvent('download');await page.locator('#saveProject').click();const project=JSON.parse((await textDownload(await save)).toString());
- assert.equal(project.captions.segments[0].timing,'phrase');assert.equal(project.captions.segments[0].start,.5);assert.equal(project.captions.segments[0].end,.95);
+ assert.equal(project.captions.segments[0].timing,'estimated');assert.equal(project.captions.segments[0].needsAlignment,true);assert.equal(project.captions.segments[0].start,.5);assert.equal(project.captions.segments[0].end,.95);
+});
+
+async function editableWordCaptions(t){
+ const page=await editor(t,true);
+ const {defaultCaptions,estimatedWords}=await import('../js/captions/model.js');
+ const raw=project();raw.captions={...defaultCaptions(),enabled:true,style:{...defaultCaptions().style,preset:'neon',font:'anton',highlight:'#ffaa33',x:45,y:70,intensity:1.3},segments:[{text:'Original caption',start:.1,end:.9,timing:'word',words:estimatedWords('Original caption',.1,.9)}]};
+ page.once('dialog',d=>d.accept());await openProject(page,raw);await page.waitForFunction(()=>document.querySelector('.caption-row textarea')?.value==='Original caption');
+ await page.evaluate(()=>{const Original=window.Worker;window.Worker=class{
+  constructor(url,options){if(String(url).includes('transcribe-worker'))return this;return new Original(url,options);}
+  postMessage(data){window.lastCaptionMode=data.mode;window.lastCaptionCues=data.cues;if(window.holdAlignment)return;setTimeout(()=>{if(window.failAlignment)this.onmessage({data:{type:'error',message:'Alignment test failure'}});else this.onmessage({data:{type:'complete',segments:data.cues.map(c=>({...c,timing:'word',needsAlignment:false}))}});},0);}
+  terminate(){}
+ };});return page;
+}
+
+test('editing and updating word timing preserves corrections, visibility, style and export highlighting',async t=>{
+ const page=await editableWordCaptions(t);
+ await page.locator('.caption-row textarea').fill('Corrected additional caption');await page.locator('.caption-row textarea').press('Tab');
+ assert.match(await page.locator('.caption-row strong').textContent(),/Timing needs update/);
+ assert.equal(await page.locator('#caption-preset').inputValue(),'neon');
+ await page.getByRole('button',{name:'Export MP4',exact:true}).click();assert.match(await page.locator('#exportStatus').textContent(),/Update word timing/);assert.equal(await page.evaluate(()=>window.calls.length),0);
+ await page.locator('#captionEnabled').uncheck();
+ await page.locator('#realignCaptions').click();await page.waitForFunction(()=>document.querySelector('#captionStatus').textContent.includes('Word timing updated'));
+ assert.equal(await page.evaluate(()=>window.lastCaptionMode),'realign');assert.equal(await page.evaluate(()=>window.lastCaptionCues[0].text),'Corrected additional caption');
+ assert.equal(await page.locator('#captionEnabled').isChecked(),false);assert.equal(await page.locator('#caption-preset').inputValue(),'neon');assert.equal(await page.locator('#caption-highlight').inputValue(),'#ffaa33');
+ const saved=page.waitForEvent('download');await page.locator('#saveProject').click();const raw=JSON.parse((await textDownload(await saved)).toString());
+ assert.equal(raw.captions.segments[0].text,'Corrected additional caption');assert.equal(raw.captions.segments[0].timing,'word');assert.equal(raw.captions.segments[0].needsAlignment,undefined);assert.equal(raw.captions.style.x,45);assert.equal(raw.captions.style.y,70);assert.equal(raw.captions.style.intensity,1.3);
+ await page.locator('#captionEnabled').check();const exported=page.waitForEvent('download');await page.getByRole('button',{name:'Export MP4',exact:true}).click();await exported;
+ const ass=await page.evaluate(()=>Object.entries(window.writeContents).find(([name])=>name.endsWith('.ass'))?.[1]);assert.match(ass,/Corrected/);assert.match(ass,/\\1c&H33aaff&/i);assert.match(ass,/\\t\(/);
+});
+
+test('timing-update cancellation and failure keep corrected text and pending work',async t=>{
+ const page=await editableWordCaptions(t);await page.evaluate(()=>window.holdAlignment=true);
+ await page.locator('.caption-row textarea').fill('Newly corrected caption');
+ // Clicking the persistent toolbar action must first commit the focused text field.
+ await page.locator('#realignCaptions').click();await page.waitForFunction(()=>window.lastCaptionMode==='realign');
+ assert.equal(await page.locator('#cancelCaptions').textContent(),'Cancel timing update');await page.locator('#cancelCaptions').click();await page.waitForFunction(()=>document.querySelector('main').getAttribute('aria-busy')==='false');
+ assert.equal(await page.locator('.caption-row textarea').inputValue(),'Newly corrected caption');assert.match(await page.locator('.caption-row strong').textContent(),/Timing needs update/);
+ await page.evaluate(()=>{window.holdAlignment=false;window.failAlignment=true;});await page.locator('#realignCaptions').click();await page.waitForFunction(()=>document.querySelector('#captionStatus').textContent.includes('Alignment test failure'));
+ assert.equal(await page.locator('.caption-row textarea').inputValue(),'Newly corrected caption');assert.equal(await page.locator('#caption-preset').inputValue(),'neon');
+ const saved=page.waitForEvent('download');await page.locator('#saveProject').click();const raw=JSON.parse((await textDownload(await saved)).toString());assert.equal(raw.captions.segments[0].needsAlignment,true);
+ page.once('dialog',d=>d.accept());await openProject(page,raw);assert.match(await page.locator('.caption-row strong').textContent(),/Timing needs update/);
 });
