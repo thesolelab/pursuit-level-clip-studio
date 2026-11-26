@@ -1,6 +1,6 @@
-# Pursuit Level Clip Studio v0.6.4
+# Pursuit Level Clip Studio v0.6.0
 
-A local-browser video clip editor for Pursuit Level. Import MP4/MOV/WebM, preview and select multiple clips, edit 9:16/16:9/original framing, mute audio, export MP4 or batch ZIP, and save/reopen project JSON.
+A local-browser video clip editor for Pursuit Level. Import MP4/MOV/WebM, preview and select multiple clips, edit 9:16/16:9/original framing with Fill, Fit and Custom Zoom, mute audio, export MP4 or batch ZIP, and save/reopen project JSON.
 
 **Video and project data stay on your device.** FFmpeg runs in a browser worker; there is no application backend or video upload.
 
@@ -15,6 +15,16 @@ Range timestamps and **Preview range** are directly below the source player. **E
 - Replacement videos are checked before current work is cleared. Unsaved work triggers a confirmation before replacement or leaving the page. These warnings are not automatic backups and browsers may suppress exit warnings.
 - Projects support at most 500 clips and imports are limited to 1 MiB of JSON.
 
+## Video Framing
+
+- **Fill** (default): fills 9:16 or 16:9 by cropping. Horizontal and Vertical Position move the crop without revealing blank areas. Zoom crops further, keeping the previous Fill behavior.
+- **Fit**: shows the entire source within the output canvas. Choose **Blur** (default) or **Black** for unused space. Position moves the fitted video along available space; unavailable axes are disabled.
+- **Custom Zoom**: 100% fits the entire source; 100%–300% scales it while preserving its aspect ratio. Position moves the foreground within available space or crops its overflow. The background fills any uncovered area.
+- **Reset Position** centers the foreground without changing mode, zoom or background. **Reset Framing** restores centered Fill at 100% with Blur selected for future Fit/Custom use.
+- The live output preview updates immediately from the same video frame; no FFmpeg preview export is needed. Saved clips retain their own mode, background, zoom and position. Older projects open with their original Fill crop and zoom. Save new projects before reopening them in an older application version, which cannot interpret the new modes.
+
+See the [framing validation notes and manual checklist](docs/video-framing-development.md) for limitations and release checks.
+
 ## Auto Montage
 
 1. Import your video (for example, two minutes of footage).
@@ -23,7 +33,7 @@ Range timestamps and **Preview range** are directly below the source player. **E
 4. Use **Shuffle order** to rearrange existing clips without picking new ranges. Use **Preview montage** to watch the sequence. Use each segment's **Edit range** to change timestamps or crop positioning, then save the clip. Preview cuts are approximate browser seeks.
 5. Select **Export montage MP4** to download **one combined video**. Add your voiceover afterward in CapCut or another editor.
 
-Montage preview and export follow the displayed list order, including jumps backward and forward in source time. Project saves preserve that order. It applies the montage's framing, audio, and resolution to every segment, keeping each segment's saved crop position. Normal individual/ZIP clip exports continue to use each clip's own settings. Retained audio follows the cuts; a source with no audio remains silent.
+Montage preview and export follow the displayed list order, including jumps backward and forward in source time. Project saves preserve that order. It applies the montage's framing, audio, and resolution to every segment, keeping each segment's saved framing configuration. Normal individual/ZIP clip exports continue to use each clip's own settings. Retained audio follows the cuts; a source with no audio remains silent.
 
 Changing the target length/count affects the next generation. Editing segment ranges affects the current montage: their combined length must remain between 45 and 60 seconds before export. The source must be longer than the target so footage can be skipped between clips. If there is no room for separated clips, choose a shorter montage, fewer segments, or a longer source; the tool does not repeat footage or pad it to reach the target.
 
@@ -32,7 +42,7 @@ Project JSON now includes montage choices as well as the saved selections. Older
 ## Exports and performance
 
 - **Export MP4** and **Export loaded clip** download individual MP4s. **Export all as ZIP** includes all saved clips, even if there is only one.
-- 720p, 1080p, and source resolution are saved per clip. Original framing preserves aspect ratio; other modes crop to 9:16 or 16:9.
+- 720p, 1080p, and source resolution are saved per clip. New manual clips default to 1080p (1080×1920 for 9:16); 720p remains available for faster exports. Original framing preserves aspect ratio. Fill crops to the output shape; Fit and Custom Zoom compose within it.
 - Exports capture fixed settings and lock editing until finished. **Cancel export** stops processing and preserves selections. An interrupted or failed engine is recreated for the next attempt.
 - The engine downloads on the first export from the same site, then is reused. Where supported, file-backed input reads the original video without copying it entirely into FFmpeg memory; other cores use a copying fallback.
 - ZIP checksums and packaging run in a separate worker, receiving one output at a time. The complete archive still needs browser storage/memory. Large or 4K sources and large batches can exceed device limits. Use smaller batches when needed.

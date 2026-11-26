@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080b11">
   <title>Pursuit Level | Clip Studio</title>
-  <link rel="stylesheet" href="style.css?v=0.6.4-wide">
-  <script src="app.js?v=edit-align-1" type="module"></script>
+  <link rel="stylesheet" href="style.css?v=framing-1">
+  <script src="app.js?v=framing-1" type="module"></script>
 </head>
 <body>
   <header class="site-header">
@@ -14,7 +14,7 @@
       <img class="brand-logo" src="pursuit-level-logo.png" alt="Pursuit Level — six-star sunset logo" width="76" height="76">
       <div class="brand-title"><strong>CLIP STUDIO</strong><span>PURSUIT LEVEL / FOOTAGE WORKSPACE</span></div>
     </div>
-    <span class="version">v0.6.4 / LOCAL WORKSPACE</span>
+    <span class="version">v0.6.0 / LOCAL WORKSPACE</span>
   </header>
   <main>
     <section class="panel editor-panel" aria-labelledby="source-heading">
@@ -50,7 +50,7 @@
       </section>
       </details>
       <section class="crop-section" aria-labelledby="crop-heading">
-        <div class="section-head editing-title"><div><p class="eyebrow">03 / FRAME</p><h2 id="crop-heading">Output preview</h2></div><span class="pill" id="formatPill">9:16 SHORTS</span></div>
+        <div class="section-head editing-title"><div><p class="eyebrow">03 / FRAME</p><h2 id="crop-heading">Video Framing</h2></div><span class="pill" id="formatPill">9:16 SHORTS</span></div>
         <p class="muted crop-hint">Changes to a loaded clip are included when you save the project or export. Add a new range as a clip to keep it. Video export is processed locally when requested.</p>
         <div class="crop-layout">
           <div class="crop-view"><canvas id="cropCanvas" width="270" height="480" aria-label="Live output crop preview"></canvas><span class="crop-caption" id="cropCaption">9:16 OUTPUT PREVIEW</span></div>
@@ -61,15 +61,29 @@
               <option value="landscape">16:9 — Widescreen</option>
               <option value="original">Original — no crop</option>
             </select>
-            <label for="cropX">Horizontal position <output id="cropXValue">50%</output></label>
-            <input id="cropX" type="range" min="0" max="100" value="50" step="1">
-            <label for="cropY">Vertical position <output id="cropYValue">50%</output></label>
-            <input id="cropY" type="range" min="0" max="100" value="50" step="1">
-            <label for="cropZoom">Zoom <output id="cropZoomValue">1.00×</output></label>
-            <input id="cropZoom" type="range" min="1" max="2" value="1" step="0.01">
-            <button id="resetCrop" type="button">Reset crop</button>
+            <div id="framingModeControls">
+              <label for="framingMode">Framing Mode</label>
+              <select id="framingMode"><option value="fill">Fill (Crop to frame)</option><option value="fit">Fit (Show Entire Video)</option><option value="custom">Custom Zoom</option></select>
+            </div>
+            <div id="backgroundControls" hidden>
+              <label for="framingBackground">Background</label>
+              <select id="framingBackground"><option value="blur">Blur</option><option value="black">Black</option></select>
+            </div>
+            <div id="zoomControls" hidden>
+              <label for="cropZoom">Zoom <output id="cropZoomValue">100%</output></label>
+              <input id="cropZoom" type="range" min="1" max="3" value="1" step="0.01">
+              <p class="muted" id="zoomHint">100% fills the frame; zoom crops further.</p>
+            </div>
+            <div id="positionControls">
+              <label for="cropX">Horizontal Position <output id="cropXValue">50%</output></label>
+              <input id="cropX" type="range" min="0" max="100" value="50" step="1">
+              <label for="cropY">Vertical Position <output id="cropYValue">50%</output></label>
+              <input id="cropY" type="range" min="0" max="100" value="50" step="1">
+              <button id="resetPosition" type="button">Reset Position</button>
+            </div>
+            <button id="resetCrop" type="button">Reset Framing</button>
             <label class="check-label"><input id="mute" type="checkbox"> Remove original audio</label>
-            <p class="muted">Format, crop, and audio settings are saved separately with each clip.</p>
+            <p class="muted">Format, framing, background, zoom, position and audio settings are saved separately with each clip.</p>
           </div>
         </div>
       </section>
@@ -87,7 +101,7 @@
           <label for="montageCount">Number of segments<input id="montageCount" type="number" min="2" max="30" step="1" value="15"></label>
           <label for="montageFormat">Montage framing<select id="montageFormat"><option value="vertical">9:16 — Short</option><option value="landscape">16:9 — Widescreen</option></select></label>
           <label for="montageAudio">Montage audio<select id="montageAudio"><option value="mute">Muted (voiceover)</option><option value="keep">Keep original audio</option></select></label>
-          <label for="montageQuality">Montage resolution<select id="montageQuality"><option value="720">720p — faster</option><option value="1080">1080p — higher detail</option></select></label>
+          <label for="montageQuality">Montage resolution<select id="montageQuality"><option value="720">720p — faster</option><option value="1080" selected>1080p — higher detail</option></select></label>
         </div>
         <div class="actions"><button id="generateMontage" type="button" disabled>Generate segments</button><button id="shuffleMontage" type="button" disabled>Shuffle order</button><button id="previewMontage" type="button" disabled>Preview montage</button><button id="exportMontage" class="primary" type="button" disabled>Export montage MP4</button></div>
         <p id="montageSummary" role="status" class="muted">Load a video to begin.</p>
@@ -97,7 +111,7 @@
       <section class="export-section" aria-labelledby="export-heading">
         <div class="section-head"><div><p class="eyebrow">05 / DELIVER</p><h2 id="export-heading">Export MP4</h2></div><span class="pill">LOCAL DOWNLOAD</span></div>
         <p class="muted description">Export selected clips with their saved format and crop settings. Encoding runs in this browser; files download to your device. No video is uploaded.</p>
-        <div class="quality-row"><label for="quality">Output resolution</label><select id="quality"><option value="720">720p — faster / smaller</option><option value="1080">1080p — higher detail</option><option value="source">Source resolution — no resizing</option></select><p class="muted">Output resolution is saved for each clip. For Original framing, 720p and 1080p fit within a matching landscape or portrait box without changing the aspect ratio.</p></div>
+        <div class="quality-row"><label for="quality">Output resolution</label><select id="quality"><option value="720">720p — faster / smaller</option><option value="1080" selected>1080p — higher detail</option><option value="source">Source-sized canvas</option></select><p class="muted">Output resolution is saved for each clip. For Original framing, 720p and 1080p fit within a matching landscape or portrait box without changing the aspect ratio. Source-sized canvas fits inside the source dimensions; Fit and Custom may still scale the foreground.</p></div>
         <div class="actions"><button id="exportLoaded" class="primary" type="button" disabled>Export loaded clip</button><button id="exportAll" type="button" disabled>Export all as ZIP</button><button id="cancelExport" type="button" hidden>Cancel export</button></div>
         <label class="progress-label" for="progress">Processing <output id="progressText">Not started</output></label>
         <progress id="progress" max="100" value="0"></progress>

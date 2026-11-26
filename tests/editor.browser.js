@@ -149,7 +149,7 @@ test('export includes pending edits, locks mutations, and packages batch outputs
   await page.waitForFunction(() => document.querySelector('#cancelExport').hidden);
   const results = await page.evaluate(() => ({calls:window.calls,mounts:window.mounts,writes:window.writes,progress:window.progressValues}));
   assert.equal(results.calls[0][results.calls[0].indexOf('-t')+1], '0.500');
-  assert.match(results.calls[0][results.calls[0].indexOf('-vf')+1], /scale=1280:720/);
+  assert.match(results.calls[0][results.calls[0].indexOf('-vf')+1], /scale=1920:1080/);
   assert.equal(results.mounts, 1); assert.deepEqual(results.writes, []);
   for (let i=1; i<results.progress.length; i++) assert.ok(results.progress[i] >= results.progress[i-1], JSON.stringify(results.progress));
   assert.equal(await page.locator('#openProject').isDisabled(), false);
@@ -466,7 +466,7 @@ test('batch caption exports append styled ASS after each saved crop filter',asyn
  const downloaded=page.waitForEvent('download');await page.locator('#exportAll').click();await downloaded;
  const result=await page.evaluate(()=>({args:window.calls,ass:Object.entries(window.writeContents).filter(([name])=>name.endsWith('.ass'))}));
  assert.match(result.args[0][result.args[0].indexOf('-vf')+1],/crop=.*setsar=1,ass=caption_0.ass:fontsdir=caption_fonts/);
- assert.match(result.ass[0][1],/Customized/);assert.match(result.ass[0][1],/PlayResX: 720/);assert.match(result.ass[0][1],/\\t\(/);
+ assert.match(result.ass[0][1],/Customized/);assert.match(result.ass[0][1],/PlayResX: 1080/);assert.match(result.ass[0][1],/\\t\(/);
 });
 
 test('caption restoration validates against the newly chosen source duration',async t=>{
@@ -576,4 +576,57 @@ test('timing-update cancellation and failure keep corrected text and pending wor
  assert.equal(await page.locator('.caption-row textarea').inputValue(),'Newly corrected caption');assert.equal(await page.locator('#caption-preset').inputValue(),'neon');
  const saved=page.waitForEvent('download');await page.locator('#saveProject').click();const raw=JSON.parse((await textDownload(await saved)).toString());assert.equal(raw.captions.segments[0].needsAlignment,true);
  page.once('dialog',d=>d.accept());await openProject(page,raw);assert.match(await page.locator('.caption-row strong').textContent(),/Timing needs update/);
+});
+
+test('framing modes restore per clip and batch exports use their saved composition',async t=>{
+ const page=await editor(t,true);
+ await page.getByRole('button',{name:'Edit range',exact:true}).click();
+ await page.locator('#framingMode').selectOption('fit');
+ assert.equal(await page.locator('#framingBackground').inputValue(),'blur');
+ assert.equal(await page.locator('#zoomControls').isVisible(),false);
+ await page.locator('#framingBackground').selectOption('black');
+ await page.locator('#cropY').fill('80');
+ await page.locator('#update').click();
+ await page.locator('#framingMode').selectOption('custom');
+ await page.locator('#cropZoom').fill('3');
+ await page.locator('#framingBackground').selectOption('blur');
+ await page.locator('#cropY').fill('20');
+ await page.locator('#add').click();
+ await page.getByRole('button',{name:'Edit range',exact:true}).first().click();
+ assert.equal(await page.locator('#framingMode').inputValue(),'fit');
+ assert.equal(await page.locator('#framingBackground').inputValue(),'black');
+ assert.equal(await page.locator('#cropY').inputValue(),'80');
+ await page.getByRole('button',{name:'Edit range',exact:true}).nth(1).click();
+ assert.equal(await page.locator('#framingMode').inputValue(),'custom');
+ assert.equal(await page.locator('#cropZoom').inputValue(),'3');
+ const save=page.waitForEvent('download');await page.locator('#saveProject').click();
+ const raw=JSON.parse((await textDownload(await save)).toString());
+ assert.equal(raw.clips[0].crop.mode,'fit');assert.equal(raw.clips[1].crop.zoom,3);
+ await openProject(page,raw);
+ const batch=page.waitForEvent('download');await page.locator('#exportAll').click();await batch;
+ const filters=await page.evaluate(()=>window.calls.map(a=>a[a.indexOf('-vf')+1]));
+ assert.match(filters[0],/pad=1080:1920/);assert.match(filters[1],/split.*boxblur=.*overlay=/);
+});
+
+test('framing controls constrain Fill, reset position separately, and preserve Original',async t=>{
+ const page=await editor(t);
+ assert.equal(await page.locator('#framingMode').inputValue(),'fill');
+ assert.equal(await page.locator('#backgroundControls').isVisible(),false);
+ // Fixture is landscape: the vertical Fill covers its height, so only X can move.
+ assert.equal(await page.locator('#cropY').isDisabled(),true);
+ await page.locator('#cropX').fill('0');
+ await page.locator('#resetPosition').click();
+ assert.equal(await page.locator('#cropX').inputValue(),'50');
+ await page.locator('#framingMode').selectOption('custom');
+ await page.locator('#cropZoom').fill('2');
+ await page.locator('#resetPosition').click();
+ assert.equal(await page.locator('#cropZoom').inputValue(),'2');
+ await page.locator('#resetCrop').click();
+ assert.equal(await page.locator('#framingMode').inputValue(),'fill');
+ await page.locator('#format').selectOption('original');
+ assert.equal(await page.locator('#framingModeControls').isVisible(),false);
+ assert.equal(await page.locator('#positionControls').isVisible(),false);
+ assert.equal(await page.locator('#resetCrop').isDisabled(),true);
+ await page.locator('#format').selectOption('vertical');
+ assert.deepEqual(await page.locator('#cropCanvas').evaluate(c=>[c.width,c.height]),[270,480]);
 });

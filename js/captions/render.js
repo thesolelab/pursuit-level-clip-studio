@@ -1,6 +1,7 @@
 import { CAPTION_FONTS } from './fonts.js';
-import { captionGroups } from './model.js?v=edit-align-1';
-import { cropRect, videoFilter } from '../export-settings.js';
+import { captionGroups } from './model.js?v=framing-1';
+import { videoFilter, outputDimensions } from '../export-settings.js?v=framing-1';
+export {outputDimensions} from '../export-settings.js?v=framing-1';
 const loaded = new Map(),
   ready = new Set(),
   groupCache = new WeakMap(),
@@ -270,30 +271,6 @@ export function animatedASS(ctx, state, clip, width, height) {
     }
   }
   return header + events.join('\n') + '\n';
-}
-export function outputDimensions(clip, width, height) {
-  let w = width,
-    h = height;
-  if (clip.format !== 'original') {
-    const r = cropRect(width, height, clip.format, clip.crop);
-    w = Math.floor(r.width / 2) * 2;
-    h = Math.floor(r.height / 2) * 2;
-  }
-  if (clip.quality !== 'source') {
-    const tall =
-        clip.format === 'vertical' ||
-        (clip.format === 'original' && height > width),
-      box = clip.quality === '1080' ? [1080, 1920] : [720, 1280];
-    const [bw, bh] = tall ? box : [box[1], box[0]];
-    if (clip.format !== 'original') return [bw, bh];
-    const factor = Math.min(bw / w, bh / h);
-    w *= factor;
-    h *= factor;
-  }
-  return [
-    Math.max(2, Math.floor(w / 2) * 2),
-    Math.max(2, Math.floor(h / 2) * 2)
-  ];
 }
 function abortable(promise, signal) {
   if (!signal) return promise;

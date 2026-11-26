@@ -2,7 +2,7 @@ import {
   safeCaptions,
   defaultCaptions,
   wordsOf
-} from './model.js?v=edit-align-1';
+} from './model.js?v=framing-1';
 
 const SMALL = [
   'ZERO',

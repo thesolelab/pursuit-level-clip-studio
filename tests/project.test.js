@@ -19,7 +19,7 @@ test('a maximum-size saved project round-trips within the import byte limit', ()
 });
 test('invalid projects and crop settings are rejected', () => {
   for (const change of [p => p.schemaVersion = 99, p => p.clips[0].end = 0,
-    p => p.clips[0].crop.zoom = 3, p => p.source.duration = 'bad']) {
+    p => p.clips[0].crop.zoom = 3.01, p => p.source.duration = 'bad']) {
     const raw = project(); change(raw); assert.throws(() => safeProject(raw));
   }
 });
@@ -60,4 +60,42 @@ test('export preserves original framing and produces even cropped dimensions', (
   for (const value of [w,h,x,y]) assert.equal(value % 2, 0);
   assert.ok(x+w <= 641 && y+h <= 479);
   assert.ok(!filter.includes('scale='));
+});
+
+test('legacy projects default to Fill; all framing choices survive independent snapshots', () => {
+  const raw = project(3);
+  raw.clips[1].crop = {mode:'fit',background:'black',zoom:1,x:0,y:80};
+  raw.clips[2].crop = {mode:'custom',background:'blur',zoom:3,x:100,y:10};
+  const clean = safeProject(raw);
+  assert.equal(clean.clips[0].crop.mode,'fill');
+  assert.equal(clean.clips[0].crop.background,'blur');
+  assert.deepEqual(clean.clips[2].crop,raw.clips[2].crop);
+  const snapshot = snapshotClips(clean.clips);
+  clean.clips[1].crop.background = 'blur';
+  assert.equal(snapshot[1].crop.background,'black');
+  for (const change of [c=>c.mode='other',c=>c.background='other',c=>c.zoom=.99,c=>c.zoom=3.01]) {
+    const invalid=project(); change(invalid.clips[0].crop);
+    assert.throws(()=>safeProject(invalid),/settings/);
+  }
+});
+
+test('Fit keeps the full source; Custom Zoom shares normalized positioning across source resolutions', async () => {
+  const {framingLayout,outputDimensions} = await import('../js/export-settings.js');
+  for (const [width,height] of [[1920,1080],[3840,2160],[1080,1920],[641,479],[479,641]]) {
+    for (const mode of ['fit','custom']) for(const zoom of [1,1.5,3]) {
+      const clip={format:'vertical',quality:'1080',crop:{mode,background:'blur',zoom,x:100,y:0}};
+      const l=framingLayout(clip,width,height),f=l.foreground;
+      assert.deepEqual(outputDimensions(clip,width,height),[1080,1920]);
+      assert.ok(Math.abs(f.width/f.height-width/height)<.01);
+      assert.equal(f.left,l.width-f.width);assert.ok(f.top===0);
+      if(mode==='fit'||zoom===1)assert.ok(f.width<=1080&&f.height<=1920);
+      assert.ok(l.backdrop.width>=l.width&&l.backdrop.height>=l.height);
+      for(const n of [f.width,f.height,l.backdrop.width,l.backdrop.height])assert.equal(n%2,0);
+      const filter=videoFilter(clip,width,height);
+      assert.match(filter,/split.*boxblur=.*overlay=/);
+      assert.match(videoFilter({...clip,crop:{...clip.crop,background:'black'}},width,height),/pad=1080:1920/);
+    }
+  }
+  const clip={format:'vertical',quality:'1080',crop:{mode:'custom',zoom:1.5,x:25,y:80}};
+  assert.deepEqual(framingLayout(clip,1920,1080),framingLayout(clip,3840,2160));
 });
