@@ -1,4 +1,5 @@
-import {safeCaptions} from './captions/model.js?v=edit-align-1';
+import {defaultFraming} from './export-settings.js?v=framing-1';
+import {safeCaptions} from './captions/model.js?v=framing-1';
 import {montageSettings} from './montage.js?v=0.6.4';
 
 export const MAX_CLIPS = 500;
@@ -17,8 +18,10 @@ export function safeProject(raw) {
   const cleaned = raw.clips.map((c, i) => {
     if (!c || !Number.isFinite(c.start) || !Number.isFinite(c.end) || c.start < 0 || c.end <= c.start || c.end > duration + .01 || !allowedFormat.has(c.format)) throw Error(`Invalid saved clip #${i+1}.`);
     const z = Number(c.crop?.zoom), x = Number(c.crop?.x), y = Number(c.crop?.y);
-    if (![x,y,z].every(Number.isFinite) || x < 0 || x > 100 || y < 0 || y > 100 || z < 1 || z > 2) throw Error(`Invalid crop settings in clip #${i+1}.`);
-    return {name:String(c.name || `Clip ${i+1}`).slice(0,80), start:c.start, end:c.end, format:c.format, crop:{x,y,zoom:z}, mute:Boolean(c.mute), quality:allowedQuality.has(c.quality) ? c.quality : '720'};
+    if (![x,y,z].every(Number.isFinite) || x < 0 || x > 100 || y < 0 || y > 100 || z < 1 || z > 3) throw Error(`Invalid crop settings in clip #${i+1}.`);
+    const mode = c.crop.mode ?? 'fill', background = c.crop.background ?? 'blur';
+    if (!['fill','fit','custom'].includes(mode) || !['blur','black'].includes(background)) throw Error(`Invalid framing settings in clip #${i+1}.`);
+    return {name:String(c.name || `Clip ${i+1}`).slice(0,80), start:c.start, end:c.end, format:c.format, crop:{...defaultFraming(),mode,background,x,y,zoom:z}, mute:Boolean(c.mute), quality:allowedQuality.has(c.quality) ? c.quality : '720'};
   });
   return {captions:safeCaptions(raw.captions,duration), source:{...raw.source, duration}, clips:cleaned, montage:raw.montage ? montageSettings(raw.montage) : null, title:typeof raw.title==='string' ? raw.title.slice(0,100) : 'Pursuit Level Clips'};
 }

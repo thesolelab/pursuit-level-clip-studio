@@ -1,4 +1,4 @@
-import {videoFilter} from './export-settings.js';
+import {videoFilter} from './export-settings.js?v=framing-1';
 
 // Uniform codecs, dimensions, frame rate and audio layout make the pieces join cleanly.
 export function montagePartArgs(input, clip, output, width, height, filter = videoFilter(clip,width,height)) {

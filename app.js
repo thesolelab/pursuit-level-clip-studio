@@ -1,9 +1,9 @@
-import {captionWorkspace} from './js/captions/workspace.js?v=edit-align-1';
-import {drawCaptions,prepareCaptionExport} from './js/captions/render.js?v=edit-align-1';
+import {captionWorkspace} from './js/captions/workspace.js?v=framing-1';
+import {drawCaptions,prepareCaptionExport} from './js/captions/render.js?v=framing-1';
 import {autoMontage, montageSettings, montageClips, shuffleMontage, MIN_MONTAGE_SECONDS, MAX_MONTAGE_SECONDS} from './js/montage.js?v=0.6.4';
-import {encodeMontage} from './js/montage-export.js?v=0.6.4';
-import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=edit-align-1';
-import {cropRect as calculateCrop} from './js/export-settings.js';
+import {encodeMontage} from './js/montage-export.js?v=framing-1';
+import {MAX_CLIPS, MAX_PROJECT_BYTES, matchesProjectSource, safeProject, validateProjectSource, snapshotClips} from './js/project.js?v=framing-1';
+import {defaultFraming, framingLayout} from './js/export-settings.js?v=framing-1';
 import {ZipWorker} from './js/zip-client.js';
 
 'use strict';
@@ -83,6 +83,8 @@ let nextId = 1;
 let dragDepth = 0;
 const cropCanvas = $('cropCanvas');
 const cropCtx = cropCanvas.getContext('2d');
+const blurCanvas = document.createElement('canvas');
+const blurCtx = blurCanvas.getContext('2d');
 let transcriptionWorker = null;
 const captions = captionWorkspace($('captionsWorkspace'), {
   video,
@@ -204,7 +206,7 @@ async function processCaptionJob(ids = null) {
     const segments = await new Promise((resolve, reject) => {
       transcriptionWorker = new Worker(
         new URL(
-          './js/captions/transcribe-worker.js?v=edit-align-1',
+          './js/captions/transcribe-worker.js?v=framing-1',
           import.meta.url
         ),
         { type: 'module' }
@@ -292,7 +294,7 @@ $('cancelCaptions').onclick = () => {
   ffmpegInstance = null;
 };
 
-const defaultCrop = () => ({x: 50, y: 50, zoom: 1});
+const defaultCrop = defaultFraming;
 let crop = defaultCrop();
 let cropFrame = null;
 let pendingProject = null;
@@ -304,20 +306,39 @@ function setPendingProject(project) {
 let projectTitle = 'Pursuit Level Clips';
 const projectFileInput = $('projectFile');
 function readCrop() {
-  return {x: Number($('cropX').value), y: Number($('cropY').value), zoom: Number($('cropZoom').value)};
+  return {mode:$('framingMode').value, background:$('framingBackground').value, x: Number($('cropX').value), y: Number($('cropY').value), zoom: Number($('cropZoom').value)};
 }
 function applyCrop(settings) {
   crop = {...defaultCrop(), ...settings};
+  $('framingMode').value = crop.mode;
+  $('framingBackground').value = crop.background;
   $('cropX').value = crop.x;
   $('cropY').value = crop.y;
   $('cropZoom').value = crop.zoom;
   $('cropXValue').textContent = `${crop.x}%`;
   $('cropYValue').textContent = `${crop.y}%`;
-  $('cropZoomValue').textContent = `${crop.zoom.toFixed(2)}×`;
+  $('cropZoomValue').textContent = `${Math.round(crop.zoom*100)}%`;
+  updateFramingControls();
   drawCrop();
 }
-function cropRect(fmt = $('format').value, settings = crop) {
-  return calculateCrop(video.videoWidth, video.videoHeight, fmt, settings);
+function previewLayout() {
+  return framingLayout({format:$('format').value, quality:$('quality').value, crop},video.videoWidth,video.videoHeight);
+}
+function updateFramingControls() {
+  const original = $('format').value === 'original';
+  $('framingModeControls').hidden = original;
+  $('backgroundControls').hidden = original || crop.mode === 'fill';
+  $('zoomControls').hidden = original || crop.mode === 'fit';
+  $('zoomHint').textContent = crop.mode === 'custom' ? '100% fits the entire source; zoom keeps its aspect ratio.' : '100% fills the frame; zoom crops further.';
+  $('positionControls').hidden = original;
+  for (const id of ['framingMode','framingBackground','cropZoom','resetCrop','resetPosition']) $(id).disabled = original || busy || loading;
+  if (video.videoWidth && !original) {
+    const layout = previewLayout();
+    const xMoves = layout.source ? video.videoWidth-layout.source.width>1 : Math.abs(layout.width-layout.foreground.width)>1;
+    const yMoves = layout.source ? video.videoHeight-layout.source.height>1 : Math.abs(layout.height-layout.foreground.height)>1;
+    $('cropX').disabled = busy || loading || !xMoves;
+    $('cropY').disabled = busy || loading || !yMoves;
+  } else $('cropX').disabled = $('cropY').disabled = true;
 }
 function updateFormat() {
   const fmt = $('format').value;
@@ -326,20 +347,44 @@ function updateFormat() {
   cropCanvas.width = size[0]; cropCanvas.height = size[1];
   $('formatPill').textContent = formats[fmt].toUpperCase();
   $('cropCaption').textContent = `${formats[fmt].toUpperCase()} · OUTPUT PREVIEW`;
-  $('cropX').disabled = $('cropY').disabled = $('cropZoom').disabled = $('resetCrop').disabled = fmt === 'original';
-  $('cropX').closest('.crop-controls').classList.toggle('crop-disabled', fmt === 'original');
+  cropCanvas.style.aspectRatio = `${size[0]} / ${size[1]}`;
+  updateFramingControls();
   drawCrop();
 }
 function drawCrop() {
   const w = cropCanvas.width, h = cropCanvas.height;
-  cropCtx.fillStyle = '#08070d'; cropCtx.fillRect(0, 0, w, h);
+  cropCtx.fillStyle = '#000'; cropCtx.fillRect(0, 0, w, h);
   if (!video.videoWidth || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
     cropCtx.fillStyle = '#b0a7b6'; cropCtx.font = '15px system-ui'; cropCtx.textAlign = 'center';
     cropCtx.fillText('Load video to preview', w / 2, h / 2); return;
   }
-  const rect = cropRect();
-  try { cropCtx.drawImage(video, rect.left, rect.top, rect.width, rect.height, 0, 0, w, h); }
-  catch { /* Draw again on the next available frame. */ }
+  const layout = previewLayout();
+  try {
+    if (layout.source) {
+      const r = layout.source;
+      cropCtx.drawImage(video,r.left,r.top,r.width,r.height,0,0,w,h);
+    } else {
+      const sx = w/layout.width, sy = h/layout.height, f = layout.foreground, b = layout.backdrop;
+      if (layout.background === 'blur') {
+        // Small offscreen surface bounds blur work even for 4K input.
+        const margin = Math.ceil(layout.blur*sx*4);
+        if (blurCanvas.width !== w+margin*2 || blurCanvas.height !== h+margin*2) {
+          blurCanvas.width = w+margin*2; blurCanvas.height = h+margin*2;
+        }
+        blurCtx.drawImage(video, (b.left-margin/sx)/b.width*video.videoWidth,
+          (b.top-margin/sy)/b.height*video.videoHeight,
+          (layout.width+margin*2/sx)/b.width*video.videoWidth,
+          (layout.height+margin*2/sy)/b.height*video.videoHeight,
+          0,0,blurCanvas.width,blurCanvas.height);
+        cropCtx.save();
+        cropCtx.filter = `blur(${layout.blur*sx}px)`;
+        cropCtx.drawImage(blurCanvas,-margin,-margin);
+        cropCtx.restore();
+        cropCtx.fillStyle = 'rgba(0,0,0,0.15)'; cropCtx.fillRect(0,0,w,h);
+      }
+      cropCtx.drawImage(video,f.left*sx,f.top*sy,f.width*sx,f.height*sy);
+    }
+  } catch { /* Draw again on the next available frame. */ }
   drawCaptions(cropCtx,captions.get(),video.currentTime,w,h);
 }
 function animateCrop() {
@@ -357,8 +402,11 @@ function stopCropAnimation() {
   drawCrop();
 }
 ['cropX', 'cropY', 'cropZoom'].forEach(id => $(id).addEventListener('input', () => applyCrop(readCrop())));
+for (const id of ['framingMode','framingBackground']) $(id).addEventListener('change', () => applyCrop({...readCrop(), zoom:id === 'framingMode' ? 1 : crop.zoom}));
+$('quality').addEventListener('change', () => {updateFramingControls();drawCrop();});
 $('format').addEventListener('change', updateFormat);
-$('resetCrop').addEventListener('click', () => { applyCrop(defaultCrop()); markEditorDirty(); status('Crop reset to center.'); });
+$('resetCrop').addEventListener('click', () => { applyCrop(defaultCrop()); markEditorDirty(); status('Framing reset to Fill, centered.'); });
+$('resetPosition').addEventListener('click', () => {applyCrop({...crop,x:50,y:50});markEditorDirty();});
 video.addEventListener('play', () => { if (cropFrame === null) animateCrop(); });
 video.addEventListener('pause', stopCropAnimation);
 video.addEventListener('seeked', drawCrop);
@@ -515,7 +563,7 @@ async function loadFile(file) {
     applyMontageSettings(project?.montage);
     if (restored) restored.forEach(clip => clips.push({...clip, id: nextId++}));
     $('filename').textContent = `${file.name} · ${(file.size / 1048576).toFixed(1)} MB`;
-    $('format').value = 'vertical'; $('mute').checked = false; $('quality').value = '720';
+    $('format').value = 'vertical'; $('mute').checked = false; $('quality').value = '1080';
     $('start').value = '00:00:00.000'; $('end').value = stamp(duration);
     applyCrop(defaultCrop());
     video.src = sourceURL; video.load();
@@ -838,7 +886,7 @@ for(const [id,field,dir] of [['startBack','start',-1],['startForward','start',1]
 });
 
 for (const id of ['start', 'end', 'cropX', 'cropY', 'cropZoom']) $(id).addEventListener('input', markEditorDirty);
-for (const id of ['format', 'quality', 'mute']) $(id).addEventListener('change', markEditorDirty);
+for (const id of ['format', 'quality', 'mute', 'framingMode', 'framingBackground']) $(id).addEventListener('change', markEditorDirty);
 
 // FFmpeg.wasm v0.12 single-threaded build. Dependencies load on first export only.
 // Engine files are provided by the validated self-hosted GitHub Pages workflow.

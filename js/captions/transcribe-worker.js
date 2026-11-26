@@ -2,7 +2,7 @@ import {
   dialogueWords,
   alignTranscript,
   realignEditedCaptions
-} from './alignment.js?v=edit-align-1';
+} from './alignment.js?v=framing-1';
 let recognizer, aligner;
 self.onmessage = async ({ data }) => {
   try {
